@@ -10,7 +10,7 @@ node_modules
 # Environment variables
 .env
 .env.local
-=======
+
 # Logs
 logs
 *.log
@@ -150,4 +150,3 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
->>>>>>> 5fa17fe61b8fab41ed4327496e64ec62a7232785

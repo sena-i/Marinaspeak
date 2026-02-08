@@ -9,29 +9,35 @@ import os from 'os';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// Get ffmpeg binary path (ffmpeg-static or system ffmpeg)
+// Get ffmpeg binary path (ffmpeg-static only, no system fallback on serverless)
 function getFFmpegPath() {
   try {
-    return require('ffmpeg-static');
+    const ffmpegPath = require('ffmpeg-static');
+    return ffmpegPath || null;
   } catch {
-    return 'ffmpeg'; // fallback to system ffmpeg
+    return null;
   }
 }
 
 // Calculate speaking duration by removing silence with ffmpeg
+// Returns null on Vercel/serverless where ffmpeg is unavailable (WPM uses audioDuration fallback)
 async function getSpeakingDuration(audioBuffer, mimeType) {
+  const ffmpegPath = getFFmpegPath();
+  if (!ffmpegPath) {
+    // ffmpeg not available (e.g. Vercel serverless) — skip silently
+    return null;
+  }
+
   const ext = mimeType.includes('mp4') ? '.mp4' : '.mp3';
   const tmpPath = path.join(os.tmpdir(), `speakalize-${Date.now()}${ext}`);
 
   try {
     await writeFile(tmpPath, Buffer.from(audioBuffer));
 
-    const ffmpegPath = getFFmpegPath();
-
     return new Promise((resolve) => {
       const cmd = `"${ffmpegPath}" -i "${tmpPath}" -af "silenceremove=start_periods=1:start_silence=0.3:start_threshold=-40dB:detection=peak,silenceremove=stop_periods=-1:stop_silence=0.3:stop_threshold=-40dB:detection=peak" -f null - 2>&1`;
 
-      exec(cmd, { timeout: 30000 }, async (error, stdout, stderr) => {
+      exec(cmd, { timeout: 15000 }, async (error, stdout, stderr) => {
         await unlink(tmpPath).catch(() => {});
         const output = (stdout || '') + (stderr || '');
         // Find the last time= value in ffmpeg output
@@ -48,7 +54,7 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
             return;
           }
         }
-        resolve(null); // ffmpeg not available or parsing failed
+        resolve(null); // ffmpeg execution failed or parsing failed
       });
     });
   } catch {
