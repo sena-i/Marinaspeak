@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx next build:*)",
+      "Bash(npm install:*)",
+      "Bash(timeout 20 npx next dev:*)",
+      "WebFetch(domain:localhost)"
+    ]
+  }
+}
