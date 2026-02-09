@@ -31,6 +31,7 @@ export default function StudentDetail({ params }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedSession, setExpandedSession] = useState(null);
+  const [audioUrls, setAudioUrls] = useState({});
   const router = useRouter();
 
   useEffect(() => {
@@ -57,6 +58,21 @@ export default function StudentDetail({ params }) {
         setLoading(false);
       });
   }, [id, router]);
+
+  function loadAudioUrl(sessionId, filePath) {
+    if (audioUrls[sessionId]) return;
+    const token = localStorage.getItem('speakalize_admin_token');
+    fetch(`/api/admin/audio?path=${encodeURIComponent(filePath)}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.url) {
+          setAudioUrls(prev => ({ ...prev, [sessionId]: data.url }));
+        }
+      })
+      .catch(() => {});
+  }
 
   if (loading) {
     return (
@@ -159,6 +175,22 @@ export default function StudentDetail({ params }) {
             </div>
             <p className="text-secondary mb-2">{formatTimestamp(session.created_at)}</p>
 
+            {session.audio_file_path && (
+              <div style={{ marginBottom: '1rem' }}>
+                {audioUrls[session.id] ? (
+                  <audio controls style={{ width: '100%' }} src={audioUrls[session.id]} />
+                ) : (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.8125rem' }}
+                    onClick={() => loadAudioUrl(session.id, session.audio_file_path)}
+                  >
+                    Load Audio
+                  </button>
+                )}
+              </div>
+            )}
+
             <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Transcription</h2>
             <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', marginBottom: '1rem' }}>
               {session.transcription}
@@ -191,10 +223,48 @@ export default function StudentDetail({ params }) {
               </>
             )}
 
-            {session.coach_comment && (
+            {session.coach_comment && (() => {
+              let comment = session.coach_comment;
+              try { comment = JSON.parse(session.coach_comment); } catch {}
+              if (typeof comment === 'object' && comment.praise) {
+                return (
+                  <>
+                    <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Coach Comment</h2>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                      {comment.praise && (
+                        <div style={{ padding: '0.75rem', borderRadius: '0.5rem', background: 'rgba(245, 158, 11, 0.08)' }}>
+                          <p style={{ fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Good Point</p>
+                          <p>{comment.praise}</p>
+                        </div>
+                      )}
+                      {comment.content && (
+                        <div style={{ padding: '0.75rem', borderRadius: '0.5rem', background: 'rgba(99, 102, 241, 0.08)' }}>
+                          <p style={{ fontWeight: 600, color: '#6366f1', marginBottom: '0.25rem' }}>Content</p>
+                          <p>{comment.content}</p>
+                        </div>
+                      )}
+                      {comment.nextAction && (
+                        <div style={{ padding: '0.75rem', borderRadius: '0.5rem', background: 'rgba(34, 197, 94, 0.08)' }}>
+                          <p style={{ fontWeight: 600, color: '#22c55e', marginBottom: '0.25rem' }}>Next Action</p>
+                          <p>{comment.nextAction}</p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              }
+              return (
+                <>
+                  <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Coach Comment</h2>
+                  <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', marginBottom: '1rem' }}>{session.coach_comment}</p>
+                </>
+              );
+            })()}
+
+            {session.feedback_text && (
               <>
-                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Coach Comment</h2>
-                <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{session.coach_comment}</p>
+                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Full Feedback</h2>
+                <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{session.feedback_text}</p>
               </>
             )}
           </div>

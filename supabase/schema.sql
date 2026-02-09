@@ -28,6 +28,7 @@ CREATE TABLE sessions (
   focus_points      TEXT,
   audio_file_name   TEXT,
   audio_mime_type   TEXT,
+  audio_file_path   TEXT,
   created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -61,3 +62,7 @@ CREATE TABLE admin_tokens (
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS feedback_text TEXT;
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS speaking_duration NUMERIC(10,2);
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS focus_points TEXT;
+
+-- Migration v2: Add audio storage support
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS audio_file_path TEXT;
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('audio', 'audio', false);

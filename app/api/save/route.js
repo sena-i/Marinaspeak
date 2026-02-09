@@ -1,31 +1,66 @@
 import { NextResponse } from 'next/server';
-import { saveSession } from '@/lib/db/supabase';
+import { saveSession, uploadAudio } from '@/lib/db/supabase';
+import getSupabase from '@/lib/db/supabase';
 
 export async function POST(request) {
   try {
-    const body = await request.json();
+    const formData = await request.formData();
 
-    if (!body.studentId || !body.transcription) {
+    const studentId = formData.get('studentId');
+    const transcription = formData.get('transcription');
+
+    if (!studentId || !transcription) {
       return NextResponse.json(
         { error: 'studentId and transcription are required' },
         { status: 400 }
       );
     }
 
+    // Parse JSON fields
+    let corrections = [];
+    let coachComment = null;
+    try {
+      const correctionsStr = formData.get('corrections');
+      if (correctionsStr) corrections = JSON.parse(correctionsStr);
+    } catch {}
+    try {
+      const coachCommentStr = formData.get('coachComment');
+      if (coachCommentStr) coachComment = JSON.parse(coachCommentStr);
+    } catch {}
+
+    // Save session first to get the session ID
     const session = await saveSession({
-      studentId: body.studentId,
-      transcription: body.transcription,
-      wordCount: body.wordCount || 0,
-      durationSeconds: body.durationSeconds || null,
-      speakingDuration: body.speakingDuration || null,
-      wpm: body.wpm || null,
-      corrections: body.corrections || [],
-      coachComment: body.coachComment || null,
-      feedbackText: body.feedbackText || null,
-      focusPoints: body.focusPoints || null,
-      audioFileName: body.audioFileName || null,
-      audioMimeType: body.audioMimeType || null
+      studentId,
+      transcription,
+      wordCount: parseInt(formData.get('wordCount')) || 0,
+      durationSeconds: parseFloat(formData.get('durationSeconds')) || null,
+      speakingDuration: parseFloat(formData.get('speakingDuration')) || null,
+      wpm: parseInt(formData.get('wpm')) || null,
+      corrections,
+      coachComment,
+      feedbackText: formData.get('feedbackText') || null,
+      focusPoints: formData.get('focusPoints') || null,
+      audioFileName: formData.get('audioFileName') || null,
+      audioMimeType: formData.get('audioMimeType') || null
     });
+
+    // Upload audio file if present
+    const audioFile = formData.get('audioFile');
+    if (audioFile && audioFile.size > 0) {
+      try {
+        const arrayBuffer = await audioFile.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const audioFilePath = await uploadAudio(studentId, session.id, buffer, audioFile.type);
+
+        // Update session with audio file path
+        await getSupabase()
+          .from('sessions')
+          .update({ audio_file_path: audioFilePath })
+          .eq('id', session.id);
+      } catch (audioError) {
+        console.error('Audio upload failed (session saved without audio):', audioError.message);
+      }
+    }
 
     return NextResponse.json({ success: true, session });
   } catch (error) {
