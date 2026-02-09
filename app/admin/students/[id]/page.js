@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { formatDate, formatTimestamp, formatDuration, truncate } from '@/lib/utils/formatters';
@@ -24,7 +24,7 @@ const RechartsLineChart = dynamic(() => import('recharts').then(mod => {
 }), { ssr: false, loading: () => <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="text-secondary">Loading chart...</div> });
 
 export default function StudentDetail({ params }) {
-  const { id } = params;
+  const { id } = use(params);
   const [sessions, setSessions] = useState([]);
   const [stats, setStats] = useState(null);
   const [progress, setProgress] = useState([]);

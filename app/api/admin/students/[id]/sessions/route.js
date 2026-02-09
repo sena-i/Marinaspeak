@@ -7,7 +7,7 @@ export async function GET(request, { params }) {
   if (authError) return authError;
 
   try {
-    const { id } = params;
+    const { id } = await params;
     const { searchParams } = new URL(request.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to');

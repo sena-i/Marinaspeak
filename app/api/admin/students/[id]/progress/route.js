@@ -7,7 +7,7 @@ export async function GET(request, { params }) {
   if (authError) return authError;
 
   try {
-    const { id } = params;
+    const { id } = await params;
     const progress = await getStudentProgress(id);
 
     return NextResponse.json({ success: true, progress });
