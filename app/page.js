@@ -326,30 +326,11 @@ export default function Home() {
       {feedback && feedback.coachComment && (
         <div className="card">
           <h2 className="mb-1">Coach Comment</h2>
-          {typeof feedback.coachComment === 'object' ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {feedback.coachComment.praise && (
-                <div>
-                  <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Good Point</p>
-                  <p style={{ fontSize: '0.875rem' }}>{feedback.coachComment.praise}</p>
-                </div>
-              )}
-              {feedback.coachComment.content && (
-                <div>
-                  <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#6366f1', marginBottom: '0.25rem' }}>Content</p>
-                  <p style={{ fontSize: '0.875rem' }}>{feedback.coachComment.content}</p>
-                </div>
-              )}
-              {feedback.coachComment.nextAction && (
-                <div>
-                  <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#f59e0b', marginBottom: '0.25rem' }}>Next Action</p>
-                  <p style={{ fontSize: '0.875rem' }}>{feedback.coachComment.nextAction}</p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{feedback.coachComment}</p>
-          )}
+          <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{
+            typeof feedback.coachComment === 'object'
+              ? [feedback.coachComment.praise, feedback.coachComment.content, feedback.coachComment.nextAction].filter(Boolean).join('\n')
+              : feedback.coachComment
+          }</p>
         </div>
       )}
 

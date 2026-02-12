@@ -224,39 +224,18 @@ export default function StudentDetail({ params }) {
             )}
 
             {session.coach_comment && (() => {
-              let comment = session.coach_comment;
-              try { comment = JSON.parse(session.coach_comment); } catch {}
-              if (typeof comment === 'object' && comment.praise) {
-                return (
-                  <>
-                    <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Coach Comment</h2>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.875rem', marginBottom: '1rem' }}>
-                      {comment.praise && (
-                        <div style={{ padding: '0.75rem', borderRadius: '0.5rem', background: 'rgba(245, 158, 11, 0.08)' }}>
-                          <p style={{ fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Good Point</p>
-                          <p>{comment.praise}</p>
-                        </div>
-                      )}
-                      {comment.content && (
-                        <div style={{ padding: '0.75rem', borderRadius: '0.5rem', background: 'rgba(99, 102, 241, 0.08)' }}>
-                          <p style={{ fontWeight: 600, color: '#6366f1', marginBottom: '0.25rem' }}>Content</p>
-                          <p>{comment.content}</p>
-                        </div>
-                      )}
-                      {comment.nextAction && (
-                        <div style={{ padding: '0.75rem', borderRadius: '0.5rem', background: 'rgba(34, 197, 94, 0.08)' }}>
-                          <p style={{ fontWeight: 600, color: '#22c55e', marginBottom: '0.25rem' }}>Next Action</p>
-                          <p>{comment.nextAction}</p>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                );
-              }
+              let displayText = session.coach_comment;
+              // Backwards compatibility: old sessions stored JSON object with praise/content/nextAction
+              try {
+                const parsed = JSON.parse(session.coach_comment);
+                if (typeof parsed === 'object' && parsed.praise) {
+                  displayText = [parsed.praise, parsed.content, parsed.nextAction].filter(Boolean).join('\n');
+                }
+              } catch {}
               return (
                 <>
                   <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Coach Comment</h2>
-                  <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', marginBottom: '1rem' }}>{session.coach_comment}</p>
+                  <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7', marginBottom: '1rem' }}>{displayText}</p>
                 </>
               );
             })()}
