@@ -66,3 +66,6 @@ CREATE TABLE admin_tokens (
 -- Migration v2: Add audio storage support
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS audio_file_path TEXT;
 -- INSERT INTO storage.buckets (id, name, public) VALUES ('audio', 'audio', false);
+
+-- Migration v3: Add full corrections for admin (all corrections, uncapped)
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS full_corrections JSONB DEFAULT '[]'::JSONB;

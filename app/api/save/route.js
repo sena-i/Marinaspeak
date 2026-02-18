@@ -18,10 +18,15 @@ export async function POST(request) {
 
     // Parse JSON fields
     let corrections = [];
+    let fullCorrections = [];
     let coachComment = null;
     try {
       const correctionsStr = formData.get('corrections');
       if (correctionsStr) corrections = JSON.parse(correctionsStr);
+    } catch {}
+    try {
+      const fullCorrectionsStr = formData.get('fullCorrections');
+      if (fullCorrectionsStr) fullCorrections = JSON.parse(fullCorrectionsStr);
     } catch {}
     try {
       const coachCommentStr = formData.get('coachComment');
@@ -37,6 +42,7 @@ export async function POST(request) {
       speakingDuration: parseFloat(formData.get('speakingDuration')) || null,
       wpm: parseInt(formData.get('wpm')) || null,
       corrections,
+      fullCorrections,
       coachComment,
       feedbackText: formData.get('feedbackText') || null,
       focusPoints: formData.get('focusPoints') || null,

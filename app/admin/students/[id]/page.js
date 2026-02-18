@@ -1,6 +1,17 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
+
+function parseCoachComment(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const bulletLines = lines.filter(l => l.startsWith('* ') || l.startsWith('・'));
+  const nonBulletLines = lines.filter(l => !l.startsWith('* ') && !l.startsWith('・'));
+  const goodPoints = nonBulletLines[0] || '';
+  const closing = nonBulletLines.length > 1 ? nonBulletLines[nonBulletLines.length - 1] : '';
+  const advice = nonBulletLines.slice(1, nonBulletLines.length > 1 ? -1 : undefined).join('\n');
+  const content = [...bulletLines, ...(advice ? [advice] : [])].join('\n');
+  return { goodPoints, content, closing };
+}
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { formatDate, formatTimestamp, formatDuration, truncate } from '@/lib/utils/formatters';
@@ -232,10 +243,28 @@ export default function StudentDetail({ params }) {
                   displayText = [parsed.praise, parsed.content, parsed.nextAction].filter(Boolean).join('\n');
                 }
               } catch {}
+              const { goodPoints, content, closing } = parseCoachComment(displayText);
               return (
                 <>
                   <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Coach Comment</h2>
-                  <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7', marginBottom: '1rem' }}>{displayText}</p>
+                  {goodPoints && (
+                    <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.375rem' }}>
+                      <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Good points</p>
+                      <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>{goodPoints}</p>
+                    </div>
+                  )}
+                  {content && (
+                    <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.375rem' }}>
+                      <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Content</p>
+                      <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{content}</p>
+                    </div>
+                  )}
+                  {closing && (
+                    <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.375rem' }}>
+                      <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Closing</p>
+                      <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{closing}</p>
+                    </div>
+                  )}
                 </>
               );
             })()}
@@ -243,7 +272,27 @@ export default function StudentDetail({ params }) {
             {session.feedback_text && (
               <>
                 <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Full Feedback</h2>
-                <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{session.feedback_text}</p>
+                <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', marginBottom: '1rem' }}>{session.feedback_text}</p>
+              </>
+            )}
+
+            {session.full_corrections?.length > 0 && (
+              <>
+                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Full Corrections</h2>
+                <div style={{ fontSize: '0.875rem' }}>
+                  {session.full_corrections.map((c, i) => (
+                    <div key={i} style={{ marginBottom: '0.5rem' }}>
+                      <p>
+                        <span style={{ color: 'var(--error)' }}>{c.original}</span>
+                        {' → '}
+                        <span style={{ color: '#22c55e' }}><strong>{c.corrected}</strong></span>
+                      </p>
+                      {c.explanation && (
+                        <p className="text-secondary" style={{ fontSize: '0.8125rem' }}>{c.explanation}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </>
             )}
           </div>

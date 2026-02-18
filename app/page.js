@@ -123,6 +123,7 @@ export default function Home() {
         speakingDuration: serverSpeakingDuration,
         wpm: calculatedWpm,
         corrections: fb.corrections || [],
+        fullCorrections: fb.fullCorrections || [],
         coachComment: fb.coachComment || null,
         feedbackText: fb.feedbackText || null,
         focusPoints: focusPoints || null,
@@ -206,12 +207,12 @@ export default function Home() {
 
         <div className="card">
           <h2 className="mb-2">Upload Audio</h2>
-          <p className="text-secondary mb-2">Upload an MP3 or MP4 file (max 50MB)</p>
+          <p className="text-secondary mb-2">Upload an MP3, MP4, or M4A file (max 50MB)</p>
 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".mp3,.mp4,audio/mpeg,audio/mp4,video/mp4"
+            accept=".mp3,.mp4,.m4a,audio/mpeg,audio/mp4,video/mp4,audio/x-m4a,audio/m4a"
             onChange={handleFileSelect}
             className="mb-2"
           />

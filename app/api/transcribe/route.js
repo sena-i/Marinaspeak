@@ -87,10 +87,16 @@ export async function POST(request) {
     const buffer = Buffer.from(arrayBuffer);
     const base64Audio = buffer.toString('base64');
 
+    // Normalize m4a MIME type for Gemini compatibility (Gemini accepts audio/mp4)
+    let mimeTypeForGemini = audioFile.type;
+    if (mimeTypeForGemini === 'audio/x-m4a' || mimeTypeForGemini === 'audio/m4a') {
+      mimeTypeForGemini = 'audio/mp4';
+    }
+
     // Run transcription and speaking duration calculation in parallel
     const [transcription, speakingDuration] = await Promise.all([
-      transcribeWithGemini(base64Audio, audioFile.type),
-      getSpeakingDuration(arrayBuffer, audioFile.type)
+      transcribeWithGemini(base64Audio, mimeTypeForGemini),
+      getSpeakingDuration(arrayBuffer, mimeTypeForGemini)
     ]);
 
     return NextResponse.json({

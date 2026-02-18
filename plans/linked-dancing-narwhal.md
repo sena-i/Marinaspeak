@@ -613,3 +613,194 @@ if (!text || text.trim() === '') {
 3. 締めの言葉が2パターン（🌿 or ☺️）のいずれかであることを確認
 4. Gemini APIエラー時 → 「フィードバックを取得できませんでした」メッセージが表示されることを確認
 5. `npm run build` が成功することを確認
+
+---
+
+## 14. Vercelデプロイ修正（ローカルでは動くがVercelでは動かない問題）
+
+### Context
+アプリはローカルでは正常に動作するが、Vercel（https://speakalize.vercel.app/）ではランタイムエラーが発生する。
+ビルドは成功するが、使用時にエラーが発生する。
+
+### 原因分析
+
+| # | 原因 | 深刻度 | 詳細 |
+|---|------|--------|------|
+| 1 | **ffmpeg-static バイナリ実行不可** | CRITICAL | 44MBのffmpegバイナリがVercel Lambda環境で実行できない。`child_process.exec()`でバイナリ起動を試みるが、Lambda環境では実行権限が制限される |
+| 2 | **ffmpeg-static バンドルサイズ** | HIGH | 44MBバイナリがサーバーレス関数にバンドルされ、関数サイズ制限（250MB）を圧迫。`/api/transcribe`が大きくなりすぎる可能性 |
+| 3 | **.gitignore マージコンフリクト残存** | MEDIUM | Line 13に`=======`、Line 153に`>>>>>>> 5fa17fe...`が残っている。Vercelが正しくファイルを除外できない可能性 |
+| 4 | **環境変数未設定** | CRITICAL | `GEMINI_API_KEY`、`SUPABASE_SERVICE_ROLE_KEY`等がVercelダッシュボードに設定されていない場合、API呼び出しが全て失敗する |
+| 5 | **リクエストボディサイズ制限** | MEDIUM | `next.config.js`で`bodySizeLimit: '50mb'`設定だが、これはServer Actions専用。Vercel APIルートのデフォルトは4.5MB |
+
+### 修正計画
+
+#### 修正1: ffmpeg-staticをVercelで安全に使えるようにする
+**対象ファイル**: `app/api/transcribe/route.js`
+
+**方針**: `getSpeakingDuration()`のffmpeg実行を`try/catch`で完全に囲み、失敗時は`null`を返す（フォールバック）。
+現在も`try/catch`はあるが、`exec()`の実行が長時間ハングする可能性がある。
+
+具体的な変更：
+1. ffmpegの呼び出しを完全にオプショナルにする — ffmpegが使えない環境（Vercel）では即座に`null`を返す
+2. `getFFmpegPath()`が`'ffmpeg'`(システムffmpegフォールバック)を返した場合、Vercelにはシステムffmpegもないので即`null`を返す
+3. `ffmpeg-static`のrequireが成功してもバイナリが実行可能か事前チェック
+
+```javascript
+async function getSpeakingDuration(audioBuffer, mimeType) {
+  let ffmpegPath;
+  try {
+    ffmpegPath = require('ffmpeg-static');
+  } catch {
+    // ffmpeg-static not available, skip speaking duration
+    return null;
+  }
+
+  if (!ffmpegPath) return null;
+
+  // ... 既存のffmpeg実行ロジック（タイムアウト短縮: 30s → 15s）
+}
+```
+
+#### 修正2: .gitignore のマージコンフリクト修正
+**対象ファイル**: `.gitignore`
+
+Line 13の`=======`とLine 153の`>>>>>>> 5fa17fe...`を削除。
+
+#### 修正3: 環境変数の設定（最重要 — 500エラーの直接原因）
+
+**確認済みエラー**: `POST /api/students/register` → 500 Internal Server Error
+**根本原因**: `lib/db/supabase.js`の`getSupabase()`が環境変数未設定のため`createClient(undefined, undefined)`でクラッシュ
+
+**手動作業**: Vercelダッシュボード → Settings → Environment Variables で以下を**必ず**設定：
+- `GEMINI_API_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+**設定後、Vercelで再デプロイが必要**
+
+**コード側の改善**: `getSupabase()`に環境変数チェックを追加（`lib/db/supabase.js`）
+
+#### 修正4: リクエストサイズ制限の明示化
+**対象ファイル**: `app/api/transcribe/route.js`
+
+Vercel Serverless Functionsの制限に合わせ、ファイルサイズ制限をAPIルート内で明示的にチェック（4.5MB以下に制限、またはVercelのPro Planなら大きいファイルも可）:
+
+```javascript
+// Vercel free plan request body limit is 4.5MB
+const MAX_FILE_SIZE = 4.5 * 1024 * 1024; // 4.5MB
+```
+
+### 変更対象ファイルまとめ
+
+| ファイル | 変更内容 |
+|----------|----------|
+| `app/api/transcribe/route.js` | ffmpeg実行をVercel環境で安全に処理（失敗時nullフォールバック） |
+| `lib/db/supabase.js` | `getSupabase()`に環境変数チェック追加 |
+| `.gitignore` | マージコンフリクトマーカー削除 |
+| Vercelダッシュボード | 環境変数設定（**手動・最重要**） |
+
+### 検証方法
+1. `NODE_ENV=production npx next build` — ビルド成功を確認
+2. `git commit && git push` — Vercelに自動デプロイ
+3. https://speakalize.vercel.app/ にアクセスし、学生ID入力→音声アップロード→フィードバック表示が動作することを確認
+4. Vercel Dashboard → Function Logs でエラーがないことを確認
+5. WPMは`speakingDuration`がnull（ffmpeg使えないため）→`audioDuration`フォールバックで計算されることを確認
+
+---
+
+## 14.5 Vercelデプロイ修正 第2弾（環境変数設定済みでも500エラー）
+
+### Context
+環境変数はVercelダッシュボードに設定済みだが、依然として全APIルートが500エラーを返す。
+前回の修正（Section 14）では解決しなかった。
+
+### 原因分析
+
+前回の修正を踏まえた上で、残る可能性のある原因：
+
+| # | 原因 | 深刻度 | 詳細 |
+|---|------|--------|------|
+| 1 | **`ffmpeg-static`（44MB）が全Lambda関数にバンドル** | CRITICAL | `package.json`に`ffmpeg-static`があるだけで、Vercelは全サーバーレス関数（`/api/sessions`等も含む）にこの44MBバイナリを含める。関数サイズ制限（250MB）超過やcold startタイムアウトの可能性。`/api/sessions`はffmpegを使わないのに影響を受ける |
+| 2 | **Next.js 16の既知バグ** | HIGH | MEMORY.mdに「Next.js 16 has known `_global-error` useContext bug (GitHub #85668)」と記載。「Next.js 15.1.7 + React 19.0.0 is the working combination」が推奨 |
+| 3 | **環境変数追加後の再デプロイ漏れ** | HIGH | Vercelで環境変数を追加しただけでは反映されない。Deployments → Redeployが必要 |
+
+### 修正計画
+
+#### 修正1: `ffmpeg-static`をdependenciesから除外し、optionalDependenciesに移動
+
+**対象ファイル**: `package.json`
+
+`ffmpeg-static`を`dependencies`から`optionalDependencies`に移動する。これにより：
+- Vercelのインストール時にffmpeg-staticが失敗しても全体のビルドは継続
+- Lambda関数のバンドルサイズが大幅に縮小
+- ローカルでは通常通りインストール・使用可能
+
+```json
+{
+  "dependencies": {
+    "@supabase/supabase-js": "^2.95.3",
+    "@vercel/speed-insights": "^1.3.1",
+    "next": "^16.1.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "recharts": "^3.7.0"
+  },
+  "optionalDependencies": {
+    "ffmpeg-static": "^5.2.0"
+  }
+}
+```
+
+加えて、`next.config.js`に`serverExternalPackages`を追加して、ffmpeg-staticがLambdaバンドルに含まれないようにする：
+
+```javascript
+const nextConfig = {
+  serverExternalPackages: ['ffmpeg-static'],
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '50mb'
+    }
+  }
+};
+```
+
+#### 修正2: Next.jsを15.1.7にダウングレード（推奨）
+
+**対象ファイル**: `package.json`
+
+MEMORY.mdの記載に従い、安定した組み合わせに戻す：
+- `next`: `^16.1.6` → `15.1.7`
+- `react`: `^19.2.4` → `19.0.0`
+- `react-dom`: `^19.2.4` → `19.0.0`
+
+```json
+{
+  "dependencies": {
+    "next": "15.1.7",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  }
+}
+```
+
+#### 修正3: Vercel再デプロイの確実な実行
+
+環境変数追加後、以下の手順で確実に再デプロイ：
+1. コード変更をcommit & push
+2. Vercel Dashboardで最新のデプロイを確認
+3. 必要なら手動でRedeploy（Deployments → ⋮ → Redeploy）
+
+### 変更対象ファイルまとめ
+
+| ファイル | 変更内容 |
+|----------|----------|
+| `package.json` | ffmpeg-staticをoptionalDependenciesに移動、Next.js 15.1.7にダウングレード |
+| `next.config.js` | `serverExternalPackages: ['ffmpeg-static']`追加 |
+
+### 検証方法
+1. `rm -rf node_modules .next && npm install` — クリーンインストール
+2. `NODE_ENV=production npx next build` — ビルド成功を確認
+3. `git commit && git push` — Vercelに自動デプロイ
+4. https://speakalize.vercel.app/api/sessions?studentId=test にアクセス → 500ではなく正常応答
+5. 学生ID入力→音声アップロード→フィードバック表示が動作することを確認
