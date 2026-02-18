@@ -2,7 +2,7 @@
 
 ## 概要
 
-このプランは以下の全変更を統括したものです。Change 1〜4はすでに実装・コミット済み。Change 5（バグ修正）とChange 6（Good pointsフィールド追加）のみ未実装。
+このプランは以下の全変更を統括したものです。Change 1〜7はすでに実装・コミット済み。Change 8（フィールド構造修正）のみ未実装。
 
 ---
 
@@ -203,23 +203,12 @@ closing: fb.closing || null,
 
 ---
 
-## 変更ファイル一覧（未実装分）
+## ✅ 変更ファイル一覧（Change 5・6実装済み）
 
-**Change 5:**
-- `lib/api/client.js`
+**Change 5:** `lib/api/client.js`
+**Change 6:** `lib/api/gemini.js`, `lib/db/supabase.js`, `app/api/save/route.js`, `lib/api/client.js`, `app/page.js`, `app/admin/students/[id]/page.js`, `supabase/schema.sql`
 
-**Change 6:**
-- `lib/api/gemini.js`
-- `lib/db/supabase.js`
-- `app/api/save/route.js`
-- `lib/api/client.js`
-- `app/page.js`
-- `app/admin/students/[id]/page.js`
-- `supabase/schema.sql`
-
----
-
-## ⚠️ Supabase 要実行（Change 6用）
+## ⚠️ Supabase 要実行（Change 6用・未実施の場合）
 
 ```sql
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS good_points TEXT;
@@ -228,17 +217,7 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS closing TEXT;
 
 ---
 
-## 検証手順
-
-1. `NODE_ENV=production npx next build` — ビルドエラーなしを確認
-2. MP3/MP4/M4A ファイルをアップロード → 正常に文字起こし・分析が動作することを確認
-3. エラーケース → JSON パースクラッシュではなく読みやすいエラーメッセージが表示されることを確認
-4. 管理者画面でセッション詳細を開く → コーチコメントが3ブロック（Good points / Content / Closing）で表示されることを確認
-5. 旧セッション（`good_points` が null）でも管理者画面が壊れないことを確認
-
----
-
-## 🔧 Change 7: Gemini 字数調整 + repeatedMistakes フィールド追加（未実装）
+## ✅ Change 7: Gemini 字数調整 + repeatedMistakes フィールド追加（実装済み）
 
 ### 問題
 
@@ -342,3 +321,90 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS repeated_mistakes TEXT;
 4. 各行の ▶ Load ボタンをクリック → audio プレーヤーが行内に表示されることを確認
 5. 行クリックで詳細展開が引き続き動作することを確認（ボタン部分では展開されないこと）
 6. 旧セッション（`repeated_mistakes` が null）で列が `-` 表示になることを確認
+
+---
+
+## 🔧 Change 8: フィールド構造修正（未実装）
+
+### 背景・目的
+
+Change 7までの実装では `goodPoints`（約100字）と `coachComment`（約50字）が別々に扱われ、
+学生ページの Coach Comment ブロックに `coachComment` のみが表示されていた。
+
+ユーザーの修正要件:
+- **`coachComment`（学生表示）** = goodPoints + Content + Closing を1ブロックに結合して表示
+- **`goodPoints`** = 文字数制限なし、文章の良いポイントを褒める
+- **Content**（内部的に `coachComment` フィールドとして保存） = 約50字、次に意識すべきことの要約
+- **`repeatedMistakes`** = 繰り返されているミスを列挙（Change 7で実装済み）
+
+### 現在の状態（Change 7後）
+
+- Gemini返値: `goodPoints`（~100字）、`coachComment`（~50字）、`closing`、`repeatedMistakes`
+- DB: `good_points`、`coach_comment`（~50字のcontent）、`closing`、`repeated_mistakes` として保存
+- 学生ページ: `feedback.coachComment` のみを "Coach Comment" ブロックに表示（goodPoints・closingは非表示）
+- 管理者ページ: 3ブロック（Good points / Content / Closing）で別々に表示
+
+### 変更内容
+
+#### A. `lib/api/gemini.js` — プロンプト更新
+
+`goodPoints` の字数制限を「約100字」→「無制限」に変更:
+
+プロンプト内:
+```
+- goodPointsフィールド: 文章の中での良いポイントを具体的に褒める（内容・構成・語彙・表現など）。絵文字（👏など）を使い、親しみやすいトーンにする。（字数制限なし）
+- coachCommentフィールド: 次のスピーチで何を意識すべきか、要約を50字程度で記載。1〜2文。
+```
+
+JSONスキーマの `goodPoints` コメントも更新:
+```json
+"goodPoints": "良いポイントを具体的に褒める（字数制限なし、絵文字あり、日本語）",
+```
+
+#### B. `app/page.js` — 学生ページの Coach Comment ブロック更新
+
+現在:
+```jsx
+{feedback && feedback.coachComment && (
+  <div className="card">
+    <h2 className="mb-1">Coach Comment</h2>
+    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{
+      typeof feedback.coachComment === 'object'
+        ? [feedback.coachComment.praise, feedback.coachComment.content, feedback.coachComment.nextAction].filter(Boolean).join('\n')
+        : feedback.coachComment
+    }</p>
+  </div>
+)}
+```
+
+変更後（goodPoints + coachComment + closing を結合して1ブロックに表示）:
+```jsx
+{feedback && (feedback.goodPoints || feedback.coachComment || feedback.closing) && (
+  <div className="card">
+    <h2 className="mb-1">Coach Comment</h2>
+    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>
+      {[feedback.goodPoints, feedback.coachComment, feedback.closing].filter(Boolean).join('\n\n')}
+    </p>
+  </div>
+)}
+```
+
+また、`{feedback && !feedback.corrections?.length && !feedback.coachComment && ...}` の空チェック条件を
+`!feedback.goodPoints && !feedback.coachComment && !feedback.closing` に更新。
+
+#### C. 管理者ページ（`app/admin/students/[id]/page.js`）— 変更なし
+
+管理者ページは Change 7 の実装（`good_points` / `coach_comment` / `closing` を3ブロック表示）のまま変更不要。
+DBには引き続き分割フィールドで保存されるため、管理者は内訳を確認できる。
+
+### 変更ファイル一覧（Change 8）
+
+- `lib/api/gemini.js` — `goodPoints` 字数制限を削除
+- `app/page.js` — Coach Comment ブロックを goodPoints + coachComment + closing の結合表示に変更
+
+### 検証手順（Change 8）
+
+1. `NODE_ENV=production npx next build` — ビルドエラーなしを確認
+2. 新規セッション送信 → 学生ページの "Coach Comment" に goodPoints・coachComment・closingが1ブロックで表示されることを確認
+3. 管理者画面では引き続き3ブロック（Good points / Content / Closing）で別々に表示されることを確認
+4. goodPoints が空の場合（旧セッション）でも Coach Comment ブロックが壊れないことを確認

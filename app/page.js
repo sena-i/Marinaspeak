@@ -326,20 +326,18 @@ export default function Home() {
         </div>
       )}
 
-      {/* Coach Comment */}
-      {feedback && feedback.coachComment && (
+      {/* Coach Comment — goodPoints + coachComment + closing combined */}
+      {feedback && (feedback.goodPoints || feedback.coachComment || feedback.closing) && (
         <div className="card">
           <h2 className="mb-1">Coach Comment</h2>
-          <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{
-            typeof feedback.coachComment === 'object'
-              ? [feedback.coachComment.praise, feedback.coachComment.content, feedback.coachComment.nextAction].filter(Boolean).join('\n')
-              : feedback.coachComment
-          }</p>
+          <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>
+            {[feedback.goodPoints, feedback.coachComment, feedback.closing].filter(Boolean).join('\n\n')}
+          </p>
         </div>
       )}
 
       {/* Feedback not loaded or empty */}
-      {feedback && !feedback.corrections?.length && !feedback.coachComment && (
+      {feedback && !feedback.corrections?.length && !feedback.goodPoints && !feedback.coachComment && !feedback.closing && (
         <div className="card">
           <p style={{ color: '#64748b' }}>
             フィードバックを取得できませんでした。もう一度お試しください。
