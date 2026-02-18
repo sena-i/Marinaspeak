@@ -326,18 +326,18 @@ export default function Home() {
         </div>
       )}
 
-      {/* Coach Comment — goodPoints + coachComment + closing combined */}
-      {feedback && (feedback.goodPoints || feedback.coachComment || feedback.closing) && (
+      {/* Coach Comment — feedbackText as main student-facing feedback */}
+      {feedback && feedback.feedbackText && (
         <div className="card">
           <h2 className="mb-1">Coach Comment</h2>
           <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>
-            {[feedback.goodPoints, feedback.coachComment, feedback.closing].filter(Boolean).join('\n\n')}
+            {feedback.feedbackText}
           </p>
         </div>
       )}
 
       {/* Feedback not loaded or empty */}
-      {feedback && !feedback.corrections?.length && !feedback.goodPoints && !feedback.coachComment && !feedback.closing && (
+      {feedback && !feedback.corrections?.length && !feedback.feedbackText && (
         <div className="card">
           <p style={{ color: '#64748b' }}>
             フィードバックを取得できませんでした。もう一度お試しください。

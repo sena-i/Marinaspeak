@@ -408,3 +408,61 @@ DBには引き続き分割フィールドで保存されるため、管理者は
 2. 新規セッション送信 → 学生ページの "Coach Comment" に goodPoints・coachComment・closingが1ブロックで表示されることを確認
 3. 管理者画面では引き続き3ブロック（Good points / Content / Closing）で別々に表示されることを確認
 4. goodPoints が空の場合（旧セッション）でも Coach Comment ブロックが壊れないことを確認
+
+---
+
+## 🔧 Change 9: 学生ページのコーチコメント表示を feedbackText に変更（未実装）
+
+### 背景・目的
+
+現在の学生ページでは `goodPoints + coachComment + closing` を結合して "Coach Comment" として表示している（Change 8で実装）。
+
+ユーザーの要求:
+- 学生ページの "Coach Comment"（goodPoints + coachComment + closing の結合）を廃止
+- 代わりに `feedbackText`（全フィードバックのまとめ）を「コーチコメント」の見出しで表示する
+
+### 変更内容
+
+#### `app/page.js` のみ変更
+
+**Before（現在）:**
+```jsx
+{/* Coach Comment — goodPoints + coachComment + closing combined */}
+{feedback && (feedback.goodPoints || feedback.coachComment || feedback.closing) && (
+  <div className="card">
+    <h2 className="mb-1">Coach Comment</h2>
+    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>
+      {[feedback.goodPoints, feedback.coachComment, feedback.closing].filter(Boolean).join('\n\n')}
+    </p>
+  </div>
+)}
+```
+
+**After:**
+```jsx
+{/* Coach Comment — feedbackText as main student-facing feedback */}
+{feedback && feedback.feedbackText && (
+  <div className="card">
+    <h2 className="mb-1">Coach Comment</h2>
+    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>
+      {feedback.feedbackText}
+    </p>
+  </div>
+)}
+```
+
+空チェック条件も更新:
+```jsx
+{feedback && !feedback.corrections?.length && !feedback.feedbackText && (
+```
+
+### 変更ファイル一覧（Change 9）
+
+- `app/page.js` — Coach Comment ブロックを feedbackText 表示に差し替え
+
+### 検証手順（Change 9）
+
+1. `NODE_ENV=production npx next build` — ビルドエラーなしを確認
+2. 新規セッション送信 → 学生ページの "Coach Comment" に feedbackText が表示されることを確認
+3. 管理者画面の Full Feedback ブロック・3ブロック（Good points / Content / Closing）は変更なしで引き続き表示されることを確認
+4. 旧セッション（feedbackText が空）の場合、Coach Comment ブロックが表示されないことを確認
