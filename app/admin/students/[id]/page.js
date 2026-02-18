@@ -1,17 +1,6 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-
-function parseCoachComment(text) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const bulletLines = lines.filter(l => l.startsWith('* ') || l.startsWith('・'));
-  const nonBulletLines = lines.filter(l => !l.startsWith('* ') && !l.startsWith('・'));
-  const goodPoints = nonBulletLines[0] || '';
-  const closing = nonBulletLines.length > 1 ? nonBulletLines[nonBulletLines.length - 1] : '';
-  const advice = nonBulletLines.slice(1, nonBulletLines.length > 1 ? -1 : undefined).join('\n');
-  const content = [...bulletLines, ...(advice ? [advice] : [])].join('\n');
-  return { goodPoints, content, closing };
-}
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { formatDate, formatTimestamp, formatDuration, truncate } from '@/lib/utils/formatters';
@@ -234,40 +223,39 @@ export default function StudentDetail({ params }) {
               </>
             )}
 
-            {session.coach_comment && (() => {
-              let displayText = session.coach_comment;
-              // Backwards compatibility: old sessions stored JSON object with praise/content/nextAction
-              try {
-                const parsed = JSON.parse(session.coach_comment);
-                if (typeof parsed === 'object' && parsed.praise) {
-                  displayText = [parsed.praise, parsed.content, parsed.nextAction].filter(Boolean).join('\n');
-                }
-              } catch {}
-              const { goodPoints, content, closing } = parseCoachComment(displayText);
-              return (
-                <>
-                  <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Coach Comment</h2>
-                  {goodPoints && (
-                    <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.375rem' }}>
-                      <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Good points</p>
-                      <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>{goodPoints}</p>
-                    </div>
-                  )}
-                  {content && (
+            {(session.good_points || session.coach_comment || session.closing) && (
+              <>
+                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Coach Comment</h2>
+                {session.good_points && (
+                  <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.375rem' }}>
+                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Good points</p>
+                    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>{session.good_points}</p>
+                  </div>
+                )}
+                {session.coach_comment && (() => {
+                  let displayText = session.coach_comment;
+                  // Backwards compatibility: old sessions stored JSON object
+                  try {
+                    const parsed = JSON.parse(session.coach_comment);
+                    if (typeof parsed === 'object' && parsed.praise) {
+                      displayText = [parsed.praise, parsed.content, parsed.nextAction].filter(Boolean).join('\n');
+                    }
+                  } catch {}
+                  return (
                     <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.375rem' }}>
                       <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Content</p>
-                      <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{content}</p>
+                      <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{displayText}</p>
                     </div>
-                  )}
-                  {closing && (
-                    <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.375rem' }}>
-                      <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Closing</p>
-                      <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{closing}</p>
-                    </div>
-                  )}
-                </>
-              );
-            })()}
+                  );
+                })()}
+                {session.closing && (
+                  <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.375rem' }}>
+                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Closing</p>
+                    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{session.closing}</p>
+                  </div>
+                )}
+              </>
+            )}
 
             {session.feedback_text && (
               <>

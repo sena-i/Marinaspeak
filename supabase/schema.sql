@@ -69,3 +69,7 @@ CREATE TABLE admin_tokens (
 
 -- Migration v3: Add full corrections for admin (all corrections, uncapped)
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS full_corrections JSONB DEFAULT '[]'::JSONB;
+
+-- Migration v4: Add goodPoints and closing as separate fields
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS good_points TEXT;
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS closing TEXT;
