@@ -235,3 +235,110 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS closing TEXT;
 3. エラーケース → JSON パースクラッシュではなく読みやすいエラーメッセージが表示されることを確認
 4. 管理者画面でセッション詳細を開く → コーチコメントが3ブロック（Good points / Content / Closing）で表示されることを確認
 5. 旧セッション（`good_points` が null）でも管理者画面が壊れないことを確認
+
+---
+
+## 🔧 Change 7: Gemini 字数調整 + repeatedMistakes フィールド追加（未実装）
+
+### 問題
+
+現在 `goodPoints`（良いポイント）と `coachComment`（改善フィードバック）の字数が適切でない。
+また Session History テーブルの Focus Points 列が繰り返しミス情報に置き換わる。
+
+### A. Gemini プロンプト更新 — `lib/api/gemini.js`
+
+プロンプトの＜コーチからのコメント＞セクションを変更:
+
+```
+3. ＜コーチからのコメント＞:
+   - goodPointsフィールド: 文章の中での良いポイントを具体的に褒める（内容・構成・語彙・表現など）。
+     絵文字（👏など）を使い、親しみやすいトーンにする。約100字。
+   - coachCommentフィールド: 次のスピーチで何を意識すべきか、要約を50字程度で記載。1〜2文。
+   - closingフィールド: 「引き続き頑張りましょう🌿」「次回の提出も楽しみにしております☺️」の2択からランダムに選ぶ。
+   - repeatedMistakesフィールド: 今回のスピーチで繰り返し見られたミス・課題を短く列挙（日本語）。
+     なければ null を返す。
+```
+
+JSON出力スキーマに `repeatedMistakes` を追加:
+
+```json
+{
+  "corrections": [...],
+  "fullCorrections": [...],
+  "goodPoints": "約100字で良いポイントを褒める（絵文字あり）",
+  "coachComment": "次に意識すべきことの要約50字程度",
+  "closing": "引き続き頑張りましょう🌿 または 次回の提出も楽しみにしております☺️",
+  "repeatedMistakes": "繰り返されているミスを短く列挙（なければ null）",
+  "feedbackText": "全添削ポイントのまとめ（日本語）"
+}
+```
+
+`analyzeWithGemini()` の return 時に `repeatedMistakes: feedback.repeatedMistakes || null` を追加。
+フォールバック（空レスポンス・パース失敗）にも `repeatedMistakes: null` を追加。
+
+### B. 保存パイプライン — `repeatedMistakes` フィールド追加
+
+- **`lib/db/supabase.js`** — `saveSession()` の insert に `repeated_mistakes: sessionData.repeatedMistakes || null` を追加
+- **`app/api/save/route.js`** — `repeatedMistakes: formData.get('repeatedMistakes') || null` を `saveSession()` 呼び出しに追加
+- **`lib/api/client.js`** — `saveResult()` の FormData に `if (resultData.repeatedMistakes) formData.append('repeatedMistakes', resultData.repeatedMistakes)` を追加
+- **`app/page.js`** — `saveResult()` 呼び出しに `repeatedMistakes: fb.repeatedMistakes || null` を追加
+
+### C. Session History テーブル列変更 — `app/admin/students/[id]/page.js`
+
+テーブルの列変更:
+- ヘッダー: `Focus Points` → `Repeated Mistakes`
+- 表示値: `session.repeated_mistakes ? truncate(session.repeated_mistakes, 30) : '-'`
+
+（Focus Points は引き続き展開パネル内で表示する）
+
+### D. Session History 各行に再生ボタン — `app/admin/students/[id]/page.js`
+
+各 `<tr>` 行に再生列を追加:
+- テーブルに新しい列 `Audio` を追加（ヘッダー）
+- `audio_file_path` がある行のみ `▶` ボタンを表示、なければ空セル
+- ボタンクリック時: `e.stopPropagation()` で行展開を防止 → `loadAudioUrl()` を呼び出し
+- URL 取得後は行内に `<audio controls>` プレーヤーを表示（行の下に inline で展開）
+- 状態管理: `audioUrls` は既存の state を流用、行内プレーヤー表示用に `inlineAudio` state（`{ [sessionId]: boolean }`）を追加
+
+実装パターン（各行の最後のセルとして）:
+```jsx
+<td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
+  {session.audio_file_path && (
+    audioUrls[session.id]
+      ? <audio controls src={audioUrls[session.id]} style={{ height: 32, width: 180 }} />
+      : <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+          onClick={() => loadAudioUrl(session.id, session.audio_file_path)}>
+          ▶ Load
+        </button>
+  )}
+</td>
+```
+
+### ⚠️ Supabase 要実行（Change 7用）
+
+```sql
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS repeated_mistakes TEXT;
+```
+
+`supabase/schema.sql` にマイグレーション v5 コメントを追加。
+
+---
+
+## 変更ファイル一覧（Change 7 未実装分）
+
+- `lib/api/gemini.js` — プロンプト字数変更 + repeatedMistakes フィールド追加
+- `lib/db/supabase.js` — repeated_mistakes を saveSession() に追加
+- `app/api/save/route.js` — repeatedMistakes を転送
+- `lib/api/client.js` — FormData に repeatedMistakes を追加
+- `app/page.js` — saveResult() に repeatedMistakes を渡す
+- `app/admin/students/[id]/page.js` — テーブル列変更 + 行内再生ボタン
+- `supabase/schema.sql` — migration v5 コメント追加
+
+## 検証手順（Change 7）
+
+1. `NODE_ENV=production npx next build` — ビルドエラーなしを確認
+2. 新規セッション送信 → 管理者テーブルで Repeated Mistakes 列に値が表示されることを確認
+3. ミスがないスピーチ → Repeated Mistakes 列が `-` になることを確認
+4. 各行の ▶ Load ボタンをクリック → audio プレーヤーが行内に表示されることを確認
+5. 行クリックで詳細展開が引き続き動作することを確認（ボタン部分では展開されないこと）
+6. 旧セッション（`repeated_mistakes` が null）で列が `-` 表示になることを確認

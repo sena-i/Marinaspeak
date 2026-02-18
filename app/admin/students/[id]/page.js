@@ -32,6 +32,7 @@ export default function StudentDetail({ params }) {
   const [error, setError] = useState('');
   const [expandedSession, setExpandedSession] = useState(null);
   const [audioUrls, setAudioUrls] = useState({});
+  const [loadingAudio, setLoadingAudio] = useState({});
   const router = useRouter();
 
   useEffect(() => {
@@ -60,7 +61,8 @@ export default function StudentDetail({ params }) {
   }, [id, router]);
 
   function loadAudioUrl(sessionId, filePath) {
-    if (audioUrls[sessionId]) return;
+    if (audioUrls[sessionId] || loadingAudio[sessionId]) return;
+    setLoadingAudio(prev => ({ ...prev, [sessionId]: true }));
     const token = localStorage.getItem('speakalize_admin_token');
     fetch(`/api/admin/audio?path=${encodeURIComponent(filePath)}`, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -70,8 +72,11 @@ export default function StudentDetail({ params }) {
         if (data.url) {
           setAudioUrls(prev => ({ ...prev, [sessionId]: data.url }));
         }
+        setLoadingAudio(prev => ({ ...prev, [sessionId]: false }));
       })
-      .catch(() => {});
+      .catch(() => {
+        setLoadingAudio(prev => ({ ...prev, [sessionId]: false }));
+      });
   }
 
   if (loading) {
@@ -133,14 +138,15 @@ export default function StudentDetail({ params }) {
               <th>Date</th>
               <th>WPM</th>
               <th>Words</th>
-              <th>Focus Points</th>
+              <th>Repeated Mistakes</th>
               <th>Transcription</th>
+              <th>Audio</th>
             </tr>
           </thead>
           <tbody>
             {sessions.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center text-secondary" style={{ padding: '2rem' }}>
+                <td colSpan={6} className="text-center text-secondary" style={{ padding: '2rem' }}>
                   No sessions yet
                 </td>
               </tr>
@@ -154,8 +160,22 @@ export default function StudentDetail({ params }) {
                   <td>{formatTimestamp(session.created_at)}</td>
                   <td>{session.wpm ?? '-'}</td>
                   <td>{session.word_count}</td>
-                  <td>{session.focus_points ? truncate(session.focus_points, 30) : '-'}</td>
+                  <td>{session.repeated_mistakes ? truncate(session.repeated_mistakes, 30) : '-'}</td>
                   <td>{truncate(session.transcription, 60)}</td>
+                  <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
+                    {session.audio_file_path && (
+                      audioUrls[session.id]
+                        ? <audio controls src={audioUrls[session.id]} style={{ height: 28, width: 160, verticalAlign: 'middle' }} />
+                        : <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                            disabled={loadingAudio[session.id]}
+                            onClick={() => loadAudioUrl(session.id, session.audio_file_path)}
+                          >
+                            {loadingAudio[session.id] ? '...' : '▶'}
+                          </button>
+                    )}
+                  </td>
                 </tr>
               ))
             )}

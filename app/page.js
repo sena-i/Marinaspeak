@@ -127,6 +127,7 @@ export default function Home() {
         goodPoints: fb.goodPoints || null,
         coachComment: fb.coachComment || null,
         closing: fb.closing || null,
+        repeatedMistakes: fb.repeatedMistakes || null,
         feedbackText: fb.feedbackText || null,
         focusPoints: focusPoints || null,
         audioFileName: audioFile.name,

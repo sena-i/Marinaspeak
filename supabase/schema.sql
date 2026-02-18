@@ -73,3 +73,6 @@ CREATE TABLE admin_tokens (
 -- Migration v4: Add goodPoints and closing as separate fields
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS good_points TEXT;
 -- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS closing TEXT;
+
+-- Migration v5: Add repeated_mistakes for session history table
+-- ALTER TABLE sessions ADD COLUMN IF NOT EXISTS repeated_mistakes TEXT;

@@ -46,6 +46,7 @@ export async function POST(request) {
       goodPoints: formData.get('goodPoints') || null,
       coachComment,
       closing: formData.get('closing') || null,
+      repeatedMistakes: formData.get('repeatedMistakes') || null,
       feedbackText: formData.get('feedbackText') || null,
       focusPoints: formData.get('focusPoints') || null,
       audioFileName: formData.get('audioFileName') || null,
