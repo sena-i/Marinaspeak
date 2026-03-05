@@ -110,7 +110,7 @@ export default function Home() {
         coachComment: structured?.student_view?.coach_comment || fb.coachComment || null,
         closing: fb.closing || null,
         repeatedMistakes: fb.repeatedMistakes || null,
-        feedbackText: fb.feedbackText || null,
+        feedbackText: fb.structuredFeedback ? JSON.stringify(fb.structuredFeedback) : (fb.feedbackText || null),
         focusPoints: focusPoints || null,
         audioFileName: audioFile.name,
         audioMimeType: audioFile.type,
