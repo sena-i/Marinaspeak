@@ -1,77 +1,47 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { uploadAndTranscribe, analyzeTranscription, registerStudent, saveResult } from '@/lib/api/client';
 import { countWords, getAudioDuration, calculateWPM } from '@/lib/utils/wpmCalculator';
 import { formatDuration } from '@/lib/utils/formatters';
 import { formatFileSize } from '@/lib/utils/fileValidator';
 
-export default function Home() {
-  const [studentId, setStudentId] = useState('');
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [step, setStep] = useState('id'); // 'id' | 'upload' | 'processing' | 'result'
-  const [error, setError] = useState('');
-  const [progress, setProgress] = useState(0);
-  const [progressText, setProgressText] = useState('');
+const CIRCLE_NUMS = ['①', '②', '③', '④'];
 
-  // Audio state
+export default function Home() {
+  // ── Form state ──────────────────────────────────────────────
+  const [studentId, setStudentId] = useState('');
   const [audioFile, setAudioFile] = useState(null);
   const [audioDuration, setAudioDuration] = useState(null);
   const [focusPoints, setFocusPoints] = useState('');
   const fileInputRef = useRef(null);
 
-  // Result state
+  // ── UI state ─────────────────────────────────────────────────
+  const [step, setStep] = useState('idle'); // 'idle' | 'processing' | 'result'
+  const [error, setError] = useState('');
+  const [progress, setProgress] = useState(0);
+  const [progressText, setProgressText] = useState('');
+  const [transcriptionOpen, setTranscriptionOpen] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  // ── Result state ─────────────────────────────────────────────
   const [transcription, setTranscription] = useState('');
-  const [feedback, setFeedback] = useState(null);
   const [wpm, setWpm] = useState(null);
   const [wordCount, setWordCount] = useState(0);
   const [speakingDuration, setSpeakingDuration] = useState(null);
+  const [corrections, setCorrections] = useState([]);
+  const [editedExplanations, setEditedExplanations] = useState([]);
+  const [coachComment, setCoachComment] = useState('');
+  const [fullFeedback, setFullFeedback] = useState(null);
+  const [fullCorrections, setFullCorrections] = useState([]);
 
-  useEffect(() => {
-    const savedId = sessionStorage.getItem('speakalize_student_id');
-    if (savedId) {
-      setStudentId(savedId);
-      setIsRegistered(true);
-      setStep('upload');
-    }
-  }, []);
-
-  async function handleRegister(e) {
-    e.preventDefault();
-    setError('');
-
-    const trimmed = studentId.trim();
-    if (!trimmed) {
-      setError('Student ID is required');
-      return;
-    }
-    if (trimmed.length > 20) {
-      setError('Student ID must be 20 characters or less');
-      return;
-    }
-    if (!/^[a-zA-Z0-9]+$/.test(trimmed)) {
-      setError('Student ID must be alphanumeric');
-      return;
-    }
-
-    try {
-      await registerStudent(trimmed);
-      sessionStorage.setItem('speakalize_student_id', trimmed);
-      setStudentId(trimmed);
-      setIsRegistered(true);
-      setStep('upload');
-    } catch (err) {
-      setError(err.message);
-    }
-  }
+  // ── Handlers ─────────────────────────────────────────────────
 
   async function handleFileSelect(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setError('');
     setAudioFile(file);
-
     try {
       const duration = await getAudioDuration(file);
       setAudioDuration(duration);
@@ -81,51 +51,63 @@ export default function Home() {
   }
 
   async function handleProcess() {
-    if (!audioFile) return;
+    const trimmedId = studentId.trim();
+    if (!trimmedId) { setError('学籍ID / Student ID を入力してください'); return; }
+    if (!audioFile) { setError('音声ファイルを選択してください'); return; }
+
     setError('');
     setStep('processing');
     setProgress(0);
 
     try {
-      setProgressText('Transcribing audio...');
+      await registerStudent(trimmedId);
+
+      setProgressText('音声を文字起こし中...');
       const transcribeResult = await uploadAndTranscribe(audioFile, setProgress);
       const text = transcribeResult.transcription;
-      setTranscription(text);
-
-      // Get speaking duration from server (ffmpeg silence removal)
       const serverSpeakingDuration = transcribeResult.speakingDuration || null;
+      setTranscription(text);
       setSpeakingDuration(serverSpeakingDuration);
 
-      setProgressText('Analyzing speech...');
+      setProgressText('スピーチを分析中...');
       const analyzeResult = await analyzeTranscription(text, setProgress, focusPoints);
-      const fb = analyzeResult.feedback || {};
-      setFeedback(fb);
+      const fb = analyzeResult.feedback || analyzeResult;
+
+      const structured = fb.structuredFeedback;
+      const keyCorrections = structured?.student_view?.key_corrections || fb.corrections || [];
+      const parsedCorrections = keyCorrections.map((c) => ({
+        original: c.original || '',
+        revised: c.revised || c.corrected || '',
+        explanation: c.explanation || ''
+      }));
+
+      setCorrections(parsedCorrections);
+      setEditedExplanations(parsedCorrections.map((c) => c.explanation));
+      setCoachComment(structured?.student_view?.coach_comment || fb.coachComment || '');
+      setFullFeedback(structured?.admin_view?.full_feedback || null);
+      setFullCorrections(parsedCorrections);
 
       const words = countWords(text);
       setWordCount(words);
-
-      let calculatedWpm = null;
-      // Use speaking duration (silence removed) if available, otherwise fall back to total audio duration
       const durationForWpm = serverSpeakingDuration || audioDuration;
-      if (durationForWpm && durationForWpm > 0) {
-        calculatedWpm = calculateWPM(text, durationForWpm);
-        setWpm(calculatedWpm);
-      }
+      const calculatedWpm = durationForWpm && durationForWpm > 0
+        ? calculateWPM(text, durationForWpm)
+        : null;
+      setWpm(calculatedWpm);
 
-      setProgressText('Saving results...');
+      setProgressText('結果を保存中...');
       setProgress(95);
-
       await saveResult({
-        studentId,
+        studentId: trimmedId,
         transcription: text,
         wordCount: words,
         durationSeconds: audioDuration,
         speakingDuration: serverSpeakingDuration,
         wpm: calculatedWpm,
-        corrections: fb.corrections || [],
-        fullCorrections: fb.fullCorrections || [],
+        corrections: parsedCorrections,
+        fullCorrections: parsedCorrections,
         goodPoints: fb.goodPoints || null,
-        coachComment: fb.coachComment || null,
+        coachComment: structured?.student_view?.coach_comment || fb.coachComment || null,
         closing: fb.closing || null,
         repeatedMistakes: fb.repeatedMistakes || null,
         feedbackText: fb.feedbackText || null,
@@ -139,216 +121,290 @@ export default function Home() {
       setStep('result');
     } catch (err) {
       setError(err.message);
-      setStep('upload');
+      setStep('idle');
     }
   }
 
   function handleReset() {
+    setStudentId('');
     setAudioFile(null);
     setAudioDuration(null);
     setSpeakingDuration(null);
+    setFocusPoints('');
     setTranscription('');
-    setFeedback(null);
+    setCorrections([]);
+    setEditedExplanations([]);
+    setCoachComment('');
+    setFullFeedback(null);
+    setFullCorrections([]);
     setWpm(null);
     setWordCount(0);
     setProgress(0);
     setError('');
-    setFocusPoints('');
-    setStep('upload');
+    setTranscriptionOpen(false);
+    setCopySuccess(false);
+    setStep('idle');
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
-  function handleLogout() {
-    sessionStorage.removeItem('speakalize_student_id');
-    setStudentId('');
-    setIsRegistered(false);
-    setStep('id');
-    handleReset();
+  function handleExplanationChange(index, value) {
+    setEditedExplanations((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
   }
 
-  // Student ID entry
-  if (step === 'id') {
-    return (
-      <div className="container" style={{ maxWidth: 440 }}>
-        <div className="text-center mb-3" style={{ marginTop: '4rem' }}>
-          <h1>Speakalize</h1>
-          <p className="text-secondary">Speech practice and AI analysis</p>
-        </div>
-        <div className="card">
-          <form onSubmit={handleRegister}>
-            <label className="label">Student ID</label>
+  function handleCopyLine() {
+    const correctionLines = corrections
+      .map((c, i) => {
+        const exp = editedExplanations[i] || '';
+        return `${CIRCLE_NUMS[i]} ${c.original}\n  → ${c.revised}${exp ? `\n  ${exp}` : ''}`;
+      })
+      .join('\n\n');
+    const text = `📌 修正ポイント\n${correctionLines}\n\n💬 コーチコメント\n${coachComment}`;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    });
+  }
+
+  // ── Render ────────────────────────────────────────────────────
+
+  return (
+    <>
+      {/* Page header */}
+      <div className="page-header">
+        <h1 style={{ marginBottom: 0, fontSize: '1.25rem' }}>Speakalize</h1>
+        <a href="/admin" className="btn btn-secondary" style={{ fontSize: '0.8125rem' }}>管理者</a>
+      </div>
+
+      <div className="split-layout">
+        {/* ── LEFT PANEL ── */}
+        <div className="panel-left">
+          <div className="card">
+            <h2 className="mb-2">コーチ入力</h2>
+
+            <label className="label">学籍ID / Student ID</label>
             <input
               className="input mb-2"
               type="text"
-              placeholder="Enter your student ID"
+              placeholder="学籍IDを入力"
               value={studentId}
               onChange={(e) => setStudentId(e.target.value)}
               maxLength={20}
-              autoFocus
+              disabled={step === 'processing' || step === 'result'}
             />
+
+            <label className="label">音声ファイル（MP3 / MP4 / M4A、最大50MB）</label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".mp3,.mp4,.m4a,audio/mpeg,audio/mp4,video/mp4,audio/x-m4a,audio/m4a"
+              onChange={handleFileSelect}
+              className="mb-1"
+              disabled={step === 'processing' || step === 'result'}
+            />
+            {audioFile && (
+              <p className="text-secondary mb-2" style={{ fontSize: '0.8125rem' }}>
+                {audioFile.name} ({formatFileSize(audioFile.size)})
+                {audioDuration ? ` · ${formatDuration(audioDuration)}` : ''}
+              </p>
+            )}
+
+            <label className="label" style={{ marginTop: '0.5rem' }}>重点ポイント（任意）</label>
+            <textarea
+              className="input mb-2"
+              placeholder="例: 接続表現、時制の一貫性"
+              value={focusPoints}
+              onChange={(e) => setFocusPoints(e.target.value)}
+              rows={2}
+              style={{ resize: 'vertical' }}
+              disabled={step === 'processing' || step === 'result'}
+            />
+
             {error && <p className="error-text mb-1">{error}</p>}
-            <button className="btn btn-primary" type="submit" style={{ width: '100%' }}>
-              Start Practice
+
+            <button
+              className="btn btn-primary"
+              onClick={handleProcess}
+              disabled={step === 'processing' || step === 'result' || !audioFile || !studentId.trim()}
+              style={{ width: '100%' }}
+            >
+              分析する
             </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  // Upload step
-  if (step === 'upload') {
-    return (
-      <div className="container">
-        <div className="flex justify-between items-center mb-3">
-          <div>
-            <h1>Speakalize</h1>
-            <p className="text-secondary">Student: {studentId}</p>
           </div>
-          <button className="btn btn-secondary" onClick={handleLogout}>Change ID</button>
         </div>
 
-        <div className="card">
-          <h2 className="mb-2">Upload Audio</h2>
-          <p className="text-secondary mb-2">Upload an MP3, MP4, or M4A file (max 50MB)</p>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".mp3,.mp4,.m4a,audio/mpeg,audio/mp4,video/mp4,audio/x-m4a,audio/m4a"
-            onChange={handleFileSelect}
-            className="mb-2"
-          />
-
-          {audioFile && (
-            <div className="mb-2" style={{ fontSize: '0.875rem' }}>
-              <p><strong>{audioFile.name}</strong> ({formatFileSize(audioFile.size)})</p>
-              {audioDuration && <p>Duration: {formatDuration(audioDuration)}</p>}
+        {/* ── RIGHT PANEL ── */}
+        <div className="panel-right">
+          {/* Idle: empty state */}
+          {step === 'idle' && (
+            <div className="empty-state">
+              <p>学籍IDと音声ファイルを入力して<br />「分析する」を押してください</p>
             </div>
           )}
 
-          <label className="label" style={{ marginTop: '0.5rem' }}>Focus Points (optional)</label>
-          <textarea
-            className="input mb-2"
-            placeholder="e.g. discourse markers, tense consistency, clarity..."
-            value={focusPoints}
-            onChange={(e) => setFocusPoints(e.target.value)}
-            rows={2}
-            style={{ resize: 'vertical' }}
-          />
+          {/* Processing */}
+          {step === 'processing' && (
+            <div className="card text-center">
+              <h2 className="mb-1">{progressText}</h2>
+              <div className="progress-bar">
+                <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
+              </div>
+              <p className="text-secondary">{progress}%</p>
+            </div>
+          )}
 
-          {error && <p className="error-text mb-1">{error}</p>}
-
-          <button
-            className="btn btn-primary"
-            onClick={handleProcess}
-            disabled={!audioFile}
-            style={{ width: '100%' }}
-          >
-            Transcribe & Analyze
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Processing step
-  if (step === 'processing') {
-    return (
-      <div className="container">
-        <h1 className="mb-3">Speakalize</h1>
-        <div className="card text-center">
-          <h2 className="mb-1">{progressText}</h2>
-          <div className="progress-bar">
-            <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
-          </div>
-          <p className="text-secondary">{progress}%</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Results step — Coaching format
-  return (
-    <div className="container">
-      <div className="flex justify-between items-center mb-3">
-        <div>
-          <h1>Results</h1>
-          <p className="text-secondary">Student: {studentId}</p>
-        </div>
-        <button className="btn btn-primary" onClick={handleReset}>New Session</button>
-      </div>
-
-      {/* Stats */}
-      <div className="stat-grid">
-        <div className="stat-card">
-          <div className="stat-value">{wordCount}</div>
-          <div className="stat-label">Words</div>
-        </div>
-        {wpm && (
-          <div className="stat-card">
-            <div className="stat-value">{wpm}</div>
-            <div className="stat-label">WPM</div>
-          </div>
-        )}
-        {speakingDuration && (
-          <div className="stat-card">
-            <div className="stat-value">{formatDuration(speakingDuration)}</div>
-            <div className="stat-label">Speaking Time</div>
-          </div>
-        )}
-      </div>
-
-      {/* Transcription */}
-      <div className="card">
-        <h2 className="mb-1">Transcription</h2>
-        <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{transcription}</p>
-      </div>
-
-      {/* Corrections */}
-      {feedback && feedback.corrections && feedback.corrections.length > 0 && (
-        <div className="card">
-          <h2 className="mb-1">Corrections</h2>
-          <div style={{ fontSize: '0.875rem' }}>
-            {feedback.corrections.map((c, i) => (
-              <div key={i} style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: i < feedback.corrections.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                <p>
-                  <span style={{ color: '#ef4444' }}>{c.original}</span>
-                  {' → '}
-                  <span style={{ color: '#22c55e' }}><strong>{c.corrected}</strong></span>
-                </p>
-                {c.explanation && (
-                  <p style={{ fontSize: '0.8125rem', marginTop: '0.25rem', color: '#64748b' }}>{c.explanation}</p>
+          {/* Result */}
+          {step === 'result' && (
+            <>
+              {/* Stats */}
+              <div className="stat-grid">
+                <div className="stat-card">
+                  <div className="stat-value">{wordCount}</div>
+                  <div className="stat-label">語数</div>
+                </div>
+                {wpm && (
+                  <div className="stat-card">
+                    <div className="stat-value">{wpm}</div>
+                    <div className="stat-label">WPM</div>
+                  </div>
+                )}
+                {speakingDuration && (
+                  <div className="stat-card">
+                    <div className="stat-value">{formatDuration(speakingDuration)}</div>
+                    <div className="stat-label">発話時間</div>
+                  </div>
                 )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* Coach Comment — goodPoints + coachComment + closing combined */}
-      {feedback && (feedback.goodPoints || feedback.coachComment || feedback.closing) && (
-        <div className="card">
-          <h2 className="mb-1">Coach Comment</h2>
-          <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>
-            {[feedback.goodPoints, feedback.coachComment, feedback.closing].filter(Boolean).join('\n\n')}
-          </p>
-        </div>
-      )}
+              {/* Transcription (collapsible) */}
+              <div className="card">
+                <div className="collapsible-header" onClick={() => setTranscriptionOpen((o) => !o)}>
+                  <h2 style={{ marginBottom: 0 }}>文字起こし</h2>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                    {transcriptionOpen ? '▲ 閉じる' : '▼ 開く'}
+                  </span>
+                </div>
+                {transcriptionOpen && (
+                  <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', marginTop: '1rem' }}>
+                    {transcription}
+                  </p>
+                )}
+              </div>
 
-      {/* Feedback not loaded or empty */}
-      {feedback && !feedback.corrections?.length && !feedback.goodPoints && !feedback.coachComment && !feedback.closing && (
-        <div className="card">
-          <p style={{ color: '#64748b' }}>
-            フィードバックを取得できませんでした。もう一度お試しください。
-          </p>
+              {/* Corrections (editable explanations) */}
+              {corrections.length > 0 && (
+                <div className="card">
+                  <h2 className="mb-2">修正ポイント</h2>
+                  {corrections.map((c, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        marginBottom: i < corrections.length - 1 ? '1rem' : 0,
+                        paddingBottom: i < corrections.length - 1 ? '1rem' : 0,
+                        borderBottom: i < corrections.length - 1 ? '1px solid var(--border)' : 'none'
+                      }}
+                    >
+                      <p style={{ fontSize: '0.875rem' }}>
+                        <span style={{ color: 'var(--error)' }}>{c.original}</span>
+                        {' → '}
+                        <span style={{ color: 'var(--success)', fontWeight: 600 }}>{c.revised}</span>
+                      </p>
+                      <input
+                        className="inline-input"
+                        style={{ marginTop: '0.375rem' }}
+                        value={editedExplanations[i] || ''}
+                        onChange={(e) => handleExplanationChange(i, e.target.value)}
+                        placeholder="説明（編集可）"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Coach comment (editable) */}
+              <div className="card">
+                <h2 className="mb-1">コーチコメント</h2>
+                <textarea
+                  className="input"
+                  value={coachComment}
+                  onChange={(e) => setCoachComment(e.target.value)}
+                  rows={5}
+                  style={{ resize: 'vertical', lineHeight: '1.7' }}
+                />
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-1 mb-2" style={{ flexWrap: 'wrap' }}>
+                <button
+                  className={`btn ${copySuccess ? 'btn-success' : 'btn-primary'}`}
+                  onClick={handleCopyLine}
+                >
+                  {copySuccess ? 'コピーしました！' : '📋 LINEにコピー'}
+                </button>
+                <button className="btn btn-secondary" onClick={handleReset}>
+                  リセット
+                </button>
+              </div>
+
+              {/* Full corrections (read-only) */}
+              {fullCorrections.length > 0 && (
+                <div className="card">
+                  <h2 className="mb-2">全修正リスト</h2>
+                  {fullCorrections.map((c, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        marginBottom: i < fullCorrections.length - 1 ? '0.75rem' : 0,
+                        paddingBottom: i < fullCorrections.length - 1 ? '0.75rem' : 0,
+                        borderBottom: i < fullCorrections.length - 1 ? '1px solid var(--border)' : 'none',
+                        fontSize: '0.875rem'
+                      }}
+                    >
+                      <p>
+                        <span style={{ color: 'var(--error)' }}>{c.original}</span>
+                        {' → '}
+                        <span style={{ color: 'var(--success)', fontWeight: 600 }}>{c.revised}</span>
+                      </p>
+                      {c.explanation && (
+                        <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                          {c.explanation}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Full feedback (read-only) */}
+              {fullFeedback && (
+                <div className="card">
+                  <h2 className="mb-2">詳細フィードバック</h2>
+                  {[
+                    { label: '構成', key: 'structure' },
+                    { label: '内容', key: 'content' },
+                    { label: '改善ポイント', key: 'improvement_points' },
+                    { label: '繰り返しミス', key: 'recurring_mistakes' }
+                  ].map(({ label, key }) =>
+                    fullFeedback[key] ? (
+                      <div key={key} style={{ marginBottom: '1rem' }}>
+                        <p style={{ fontWeight: 600, fontSize: '0.8125rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                          {label}
+                        </p>
+                        <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>
+                          {fullFeedback[key]}
+                        </p>
+                      </div>
+                    ) : null
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </div>
-      )}
-      {!feedback && (
-        <div className="card">
-          <p style={{ color: '#64748b' }}>No feedback available</p>
-        </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }
