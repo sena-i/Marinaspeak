@@ -54,6 +54,16 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
             return;
           }
         }
+        // Fallback: parse total duration from ffmpeg input info (always present for valid files)
+        const durationMatch = output.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+        if (durationMatch) {
+          const hours = parseInt(durationMatch[1]);
+          const minutes = parseInt(durationMatch[2]);
+          const seconds = parseFloat(durationMatch[3]);
+          const totalDuration = hours * 3600 + minutes * 60 + seconds;
+          resolve(totalDuration > 0 ? totalDuration : null);
+          return;
+        }
         resolve(null); // ffmpeg execution failed or parsing failed
       });
     });
