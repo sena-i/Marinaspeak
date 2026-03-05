@@ -42,7 +42,7 @@ export default function AdminLogin() {
     <div className="container" style={{ maxWidth: 440 }}>
       <div className="text-center mb-3" style={{ marginTop: '4rem' }}>
         <h1>管理者ダッシュボード</h1>
-        <p className="text-secondary">Marinaspeak 教師ポータル</p>
+        <p className="text-secondary">Marinaspeak コーチ用管理画面</p>
       </div>
       <div className="card">
         <form onSubmit={handleSubmit}>
