@@ -12,7 +12,7 @@ export default function AdminLogin() {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!token.trim()) {
-      setError('Access token is required');
+      setError('アクセストークンを入力してください');
       return;
     }
 
@@ -25,7 +25,7 @@ export default function AdminLogin() {
       });
 
       if (!response.ok) {
-        setError('Invalid access token');
+        setError('アクセストークンが正しくありません');
         setLoading(false);
         return;
       }
@@ -33,7 +33,7 @@ export default function AdminLogin() {
       localStorage.setItem('speakalize_admin_token', token.trim());
       router.push('/admin/students');
     } catch {
-      setError('Connection failed');
+      setError('接続に失敗しました');
       setLoading(false);
     }
   }
@@ -41,16 +41,16 @@ export default function AdminLogin() {
   return (
     <div className="container" style={{ maxWidth: 440 }}>
       <div className="text-center mb-3" style={{ marginTop: '4rem' }}>
-        <h1>Admin Dashboard</h1>
-        <p className="text-secondary">Speakalize Teacher Portal</p>
+        <h1>管理者ダッシュボード</h1>
+        <p className="text-secondary">Marinaspeak 教師ポータル</p>
       </div>
       <div className="card">
         <form onSubmit={handleSubmit}>
-          <label className="label">Access Token</label>
+          <label className="label">アクセストークン</label>
           <input
             className="input mb-2"
             type="password"
-            placeholder="Enter your access token"
+            placeholder="アクセストークンを入力してください"
             value={token}
             onChange={(e) => setToken(e.target.value)}
             autoFocus
@@ -62,7 +62,7 @@ export default function AdminLogin() {
             disabled={loading}
             style={{ width: '100%' }}
           >
-            {loading ? 'Verifying...' : 'Login'}
+            {loading ? '認証中...' : 'ログイン'}
           </button>
         </form>
       </div>

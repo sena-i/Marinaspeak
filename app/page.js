@@ -52,7 +52,7 @@ export default function Home() {
 
   async function handleProcess() {
     const trimmedId = studentId.trim();
-    if (!trimmedId) { setError('学籍ID / Student ID を入力してください'); return; }
+    if (!trimmedId) { setError('受講生IDを入力してください'); return; }
     if (!audioFile) { setError('音声ファイルを選択してください'); return; }
 
     setError('');
@@ -175,7 +175,7 @@ export default function Home() {
     <>
       {/* Page header */}
       <div className="page-header">
-        <h1 style={{ marginBottom: 0, fontSize: '1.25rem' }}>Speakalize</h1>
+        <h1 style={{ marginBottom: 0, fontSize: '1.25rem' }}>Marinaspeak</h1>
         <a href="/admin" className="btn btn-secondary" style={{ fontSize: '0.8125rem' }}>管理者</a>
       </div>
 
@@ -185,11 +185,11 @@ export default function Home() {
           <div className="card">
             <h2 className="mb-2">コーチ入力</h2>
 
-            <label className="label">学籍ID / Student ID</label>
+            <label className="label">受講生ID</label>
             <input
               className="input mb-2"
               type="text"
-              placeholder="学籍IDを入力"
+              placeholder="受講生IDを入力"
               value={studentId}
               onChange={(e) => setStudentId(e.target.value)}
               maxLength={20}
@@ -241,7 +241,7 @@ export default function Home() {
           {/* Idle: empty state */}
           {step === 'idle' && (
             <div className="empty-state">
-              <p>学籍IDと音声ファイルを入力して<br />「分析する」を押してください</p>
+              <p>受講生IDと音声ファイルを入力して<br />「分析する」を押してください</p>
             </div>
           )}
 

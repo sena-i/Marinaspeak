@@ -35,7 +35,7 @@ export default function StudentList() {
         setLoading(false);
       })
       .catch(() => {
-        setError('Failed to load students');
+        setError('受講者データの取得に失敗しました');
         setLoading(false);
       });
   }, [router]);
@@ -48,7 +48,7 @@ export default function StudentList() {
   if (loading) {
     return (
       <div className="container-wide text-center" style={{ marginTop: '4rem' }}>
-        <p className="text-secondary">Loading...</p>
+        <p className="text-secondary">読み込み中...</p>
       </div>
     );
   }
@@ -57,10 +57,10 @@ export default function StudentList() {
     <div className="container-wide">
       <div className="flex justify-between items-center mb-3">
         <div>
-          <h1>Students</h1>
-          <p className="text-secondary">{students.length} registered students</p>
+          <h1>受講者一覧</h1>
+          <p className="text-secondary">登録済み受講者: {students.length}名</p>
         </div>
-        <button className="btn btn-secondary" onClick={handleLogout}>Logout</button>
+        <button className="btn btn-secondary" onClick={handleLogout}>ログアウト</button>
       </div>
 
       {error && <p className="error-text mb-2">{error}</p>}
@@ -69,18 +69,18 @@ export default function StudentList() {
         <table className="table">
           <thead>
             <tr>
-              <th>Student ID</th>
-              <th>Name</th>
-              <th>Sessions</th>
-              <th>Avg WPM</th>
-              <th>Last Practice</th>
+              <th>受講生ID</th>
+              <th>氏名</th>
+              <th>セッション数</th>
+              <th>平均WPM</th>
+              <th>最終提出日</th>
             </tr>
           </thead>
           <tbody>
             {students.length === 0 ? (
               <tr>
                 <td colSpan={5} className="text-center text-secondary" style={{ padding: '2rem' }}>
-                  No students registered yet
+                  受講者はまだ登録されていません
                 </td>
               </tr>
             ) : (

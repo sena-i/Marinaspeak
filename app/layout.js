@@ -1,7 +1,7 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'Speakalize',
+  title: 'Marinaspeak',
   description: 'Speech practice and AI analysis tool'
 };
 
