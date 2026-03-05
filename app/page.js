@@ -159,7 +159,7 @@ export default function Home() {
     const correctionLines = corrections
       .map((c, i) => {
         const exp = editedExplanations[i] || '';
-        return `${CIRCLE_NUMS[i]} ${c.original}\n  → ${c.revised}${exp ? `\n  ${exp}` : ''}`;
+        return `${CIRCLE_NUMS[i] ?? `(${i + 1})`} ${c.original}\n  → ${c.revised}${exp ? `\n  ${exp}` : ''}`;
       })
       .join('\n\n');
     const text = `📌 修正ポイント\n${correctionLines}\n\n💬 コーチコメント\n${coachComment}`;
