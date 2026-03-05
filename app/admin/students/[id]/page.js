@@ -21,7 +21,7 @@ const RechartsLineChart = dynamic(() => import('recharts').then(mod => {
       </LineChart>
     </ResponsiveContainer>
   )};
-}), { ssr: false, loading: () => <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="text-secondary">Loading chart...</div> });
+}), { ssr: false, loading: () => <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="text-secondary">グラフを読み込み中...</div> });
 
 export default function StudentDetail({ params }) {
   const { id } = use(params);
@@ -55,7 +55,7 @@ export default function StudentDetail({ params }) {
         setLoading(false);
       })
       .catch(() => {
-        setError('Failed to load student data');
+        setError('受講者データの取得に失敗しました');
         setLoading(false);
       });
   }, [id, router]);
@@ -79,10 +79,68 @@ export default function StudentDetail({ params }) {
       });
   }
 
+  function normalizeSessionFeedback(session) {
+    let structured = null;
+
+    if (session?.structured_feedback && typeof session.structured_feedback === 'object') {
+      structured = session.structured_feedback;
+    }
+
+    if (!structured && session?.feedback_text) {
+      try {
+        const parsed = JSON.parse(session.feedback_text);
+        if (parsed?.student_view || parsed?.admin_view) {
+          structured = parsed;
+        }
+      } catch {}
+    }
+
+    let legacyCoachComment = session?.coach_comment || '';
+    // Backwards compatibility: old sessions may store JSON in coach_comment.
+    try {
+      const parsed = JSON.parse(session?.coach_comment || '');
+      if (parsed && typeof parsed === 'object' && parsed.praise) {
+        legacyCoachComment = [parsed.praise, parsed.content, parsed.nextAction].filter(Boolean).join('\n');
+      }
+    } catch {}
+
+    const fallbackCoachComment = [session?.good_points, legacyCoachComment, session?.closing]
+      .filter(Boolean)
+      .join('\n\n');
+
+    const fallbackCorrections = (session?.corrections || []).map((c) => ({
+      original: c.original || '',
+      revised: c.corrected || c.revised || '',
+      explanation: c.explanation || ''
+    }));
+
+    const fullFeedback = {
+      structure: structured?.admin_view?.full_feedback?.structure || session?.feedback_text || '',
+      content: structured?.admin_view?.full_feedback?.content || '',
+      improvement_points: structured?.admin_view?.full_feedback?.improvement_points || legacyCoachComment || '',
+      recurring_mistakes: structured?.admin_view?.full_feedback?.recurring_mistakes || session?.repeated_mistakes || 'なし'
+    };
+
+    return {
+      meta: {
+        word_count: structured?.meta?.word_count ?? session?.word_count ?? 0,
+        wpm: structured?.meta?.wpm ?? 0
+      },
+      student_view: {
+        key_corrections: structured?.student_view?.key_corrections || fallbackCorrections,
+        coach_comment: structured?.student_view?.coach_comment || fallbackCoachComment || ''
+      },
+      admin_view: {
+        full_feedback: fullFeedback,
+        revised_transcript: structured?.admin_view?.revised_transcript || session?.transcription || ''
+      }
+    };
+  }
+
   if (loading) {
     return (
       <div className="container-wide text-center" style={{ marginTop: '4rem' }}>
-        <p className="text-secondary">Loading...</p>
+        <p className="text-secondary">読み込み中...</p>
       </div>
     );
   }
@@ -91,11 +149,11 @@ export default function StudentDetail({ params }) {
     <div className="container-wide">
       <div className="flex justify-between items-center mb-3">
         <div>
-          <h1>Student: {id}</h1>
-          <p className="text-secondary">{sessions.length} total sessions</p>
+          <h1>受講者: {id}</h1>
+          <p className="text-secondary">合計セッション数: {sessions.length}</p>
         </div>
         <button className="btn btn-secondary" onClick={() => router.push('/admin/students')}>
-          Back to List
+          一覧に戻る
         </button>
       </div>
 
@@ -106,11 +164,11 @@ export default function StudentDetail({ params }) {
         <div className="stat-grid">
           <div className="stat-card">
             <div className="stat-value">{stats.totalSessions}</div>
-            <div className="stat-label">Total Sessions</div>
+            <div className="stat-label">総セッション数</div>
           </div>
           <div className="stat-card">
             <div className="stat-value">{stats.avgWpm ?? '-'}</div>
-            <div className="stat-label">Avg WPM</div>
+            <div className="stat-label">平均WPM</div>
           </div>
         </div>
       )}
@@ -118,7 +176,7 @@ export default function StudentDetail({ params }) {
       {/* WPM Progress Chart */}
       {progress.length > 0 && (
         <div className="card mb-2">
-          <h2 className="mb-2">WPM Progress</h2>
+          <h2 className="mb-2">WPM推移</h2>
           <RechartsLineChart
             data={progress}
             height={250}
@@ -131,23 +189,23 @@ export default function StudentDetail({ params }) {
 
       {/* Sessions Table */}
       <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-        <h2 style={{ padding: '1.25rem 1.25rem 0' }}>Session History</h2>
+        <h2 style={{ padding: '1.25rem 1.25rem 0' }}>セッション履歴</h2>
         <table className="table">
           <thead>
             <tr>
-              <th>Date</th>
+              <th>日時</th>
               <th>WPM</th>
-              <th>Words</th>
-              <th>Repeated Mistakes</th>
-              <th>Transcription</th>
-              <th>Audio</th>
+              <th>語数</th>
+              <th>繰り返しミス</th>
+              <th>文字起こし</th>
+              <th>音声</th>
             </tr>
           </thead>
           <tbody>
             {sessions.length === 0 ? (
               <tr>
                 <td colSpan={6} className="text-center text-secondary" style={{ padding: '2rem' }}>
-                  No sessions yet
+                  セッションはまだありません
                 </td>
               </tr>
             ) : (
@@ -187,11 +245,16 @@ export default function StudentDetail({ params }) {
       {expandedSession && (() => {
         const session = sessions.find(s => s.id === expandedSession);
         if (!session) return null;
+        const schemaFeedback = normalizeSessionFeedback(session);
+        const keyCorrections = schemaFeedback.student_view.key_corrections || [];
+        const coachComment = schemaFeedback.student_view.coach_comment || '';
+        const fullFeedback = schemaFeedback.admin_view.full_feedback || {};
+        const revisedTranscript = schemaFeedback.admin_view.revised_transcript || '';
         return (
           <div className="card mt-2">
             <div className="flex justify-between items-center mb-2">
-              <h2>Session Detail</h2>
-              <button className="btn btn-secondary" onClick={() => setExpandedSession(null)}>Close</button>
+              <h2>セッション詳細</h2>
+              <button className="btn btn-secondary" onClick={() => setExpandedSession(null)}>閉じる</button>
             </div>
             <p className="text-secondary mb-2">{formatTimestamp(session.created_at)}</p>
 
@@ -205,34 +268,34 @@ export default function StudentDetail({ params }) {
                     style={{ fontSize: '0.8125rem' }}
                     onClick={() => loadAudioUrl(session.id, session.audio_file_path)}
                   >
-                    Load Audio
+                    音声を読み込む
                   </button>
                 )}
               </div>
             )}
 
-            <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Transcription</h2>
+            <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>文字起こし</h2>
             <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', marginBottom: '1rem' }}>
               {session.transcription}
             </p>
 
             {session.focus_points && (
               <>
-                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Focus Points</h2>
+                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>重点フィードバック</h2>
                 <p style={{ fontSize: '0.875rem', marginBottom: '1rem', color: 'var(--primary)' }}>{session.focus_points}</p>
               </>
             )}
 
-            {session.corrections?.length > 0 && (
+            {keyCorrections.length > 0 && (
               <>
-                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Corrections</h2>
+                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>生徒表示: 重要な修正ポイント</h2>
                 <div style={{ fontSize: '0.875rem', marginBottom: '1rem' }}>
-                  {session.corrections.map((c, i) => (
+                  {keyCorrections.map((c, i) => (
                     <div key={i} style={{ marginBottom: '0.5rem' }}>
                       <p>
                         <span style={{ color: 'var(--error)' }}>{c.original}</span>
                         {' → '}
-                        <span style={{ color: '#22c55e' }}><strong>{c.corrected}</strong></span>
+                        <span style={{ color: '#22c55e' }}><strong>{c.revised || c.corrected}</strong></span>
                       </p>
                       {c.explanation && (
                         <p className="text-secondary" style={{ fontSize: '0.8125rem' }}>{c.explanation}</p>
@@ -243,57 +306,62 @@ export default function StudentDetail({ params }) {
               </>
             )}
 
-            {(session.good_points || session.coach_comment || session.closing) && (
+            {coachComment && (
               <>
-                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Coach Comment</h2>
-                {session.good_points && (
-                  <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.375rem' }}>
-                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Good points</p>
-                    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>{session.good_points}</p>
+                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>生徒表示: コーチコメント</h2>
+                <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7', marginBottom: '1rem' }}>
+                  {coachComment}
+                </p>
+              </>
+            )}
+
+            {(fullFeedback.structure || fullFeedback.content || fullFeedback.improvement_points || fullFeedback.recurring_mistakes) && (
+              <>
+                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>管理者表示: 詳細フィードバック</h2>
+                {fullFeedback.structure && (
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)' }}>構成</p>
+                    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{fullFeedback.structure}</p>
                   </div>
                 )}
-                {session.coach_comment && (() => {
-                  let displayText = session.coach_comment;
-                  // Backwards compatibility: old sessions stored JSON object
-                  try {
-                    const parsed = JSON.parse(session.coach_comment);
-                    if (typeof parsed === 'object' && parsed.praise) {
-                      displayText = [parsed.praise, parsed.content, parsed.nextAction].filter(Boolean).join('\n');
-                    }
-                  } catch {}
-                  return (
-                    <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.375rem' }}>
-                      <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Content</p>
-                      <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>{displayText}</p>
-                    </div>
-                  );
-                })()}
-                {session.closing && (
-                  <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.375rem' }}>
-                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)', marginBottom: '0.25rem' }}>Closing</p>
-                    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{session.closing}</p>
+                {fullFeedback.content && (
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)' }}>内容</p>
+                    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{fullFeedback.content}</p>
+                  </div>
+                )}
+                {fullFeedback.improvement_points && (
+                  <div style={{ marginBottom: '0.5rem' }}>
+                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)' }}>改善ポイント</p>
+                    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{fullFeedback.improvement_points}</p>
+                  </div>
+                )}
+                {fullFeedback.recurring_mistakes && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <p style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--primary)' }}>繰り返しミス</p>
+                    <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{fullFeedback.recurring_mistakes}</p>
                   </div>
                 )}
               </>
             )}
 
-            {session.feedback_text && (
+            {revisedTranscript && (
               <>
-                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Full Feedback</h2>
-                <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', marginBottom: '1rem' }}>{session.feedback_text}</p>
+                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>管理者表示: 修正版トランスクリプト</h2>
+                <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', marginBottom: '1rem' }}>{revisedTranscript}</p>
               </>
             )}
 
             {session.full_corrections?.length > 0 && (
               <>
-                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>Full Corrections</h2>
+                <h2 className="mb-1" style={{ fontSize: '0.9375rem' }}>全修正一覧</h2>
                 <div style={{ fontSize: '0.875rem' }}>
                   {session.full_corrections.map((c, i) => (
                     <div key={i} style={{ marginBottom: '0.5rem' }}>
                       <p>
                         <span style={{ color: 'var(--error)' }}>{c.original}</span>
                         {' → '}
-                        <span style={{ color: '#22c55e' }}><strong>{c.corrected}</strong></span>
+                        <span style={{ color: '#22c55e' }}><strong>{c.revised || c.corrected}</strong></span>
                       </p>
                       {c.explanation && (
                         <p className="text-secondary" style={{ fontSize: '0.8125rem' }}>{c.explanation}</p>
