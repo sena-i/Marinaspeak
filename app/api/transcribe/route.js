@@ -26,7 +26,7 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
   }
 
   return new Promise((resolve) => {
-    const cmd = `"${ffmpegPath}" -i "${tmpPath}" -af "silenceremove=start_periods=1:start_silence=0.3:start_threshold=-40dB:detection=peak,silenceremove=stop_periods=-1:stop_silence=0.3:stop_threshold=-40dB:detection=peak" -f null - 2>&1`;
+    const cmd = `"${ffmpegPath}" -i "${tmpPath}" -af "silenceremove=start_periods=1:start_silence=1.0:start_threshold=-40dB:detection=peak,silenceremove=stop_periods=-1:stop_silence=1.0:stop_threshold=-40dB:detection=peak" -f null - 2>&1`;
     exec(cmd, { timeout: 25000 }, async (error, stdout, stderr) => {
       await unlink(tmpPath).catch(() => {});
       const output = (stdout || '') + (stderr || '');
