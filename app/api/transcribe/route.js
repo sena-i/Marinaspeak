@@ -4,7 +4,7 @@ import { validateAudioFile } from '@/lib/utils/fileValidator';
 import { parseBuffer } from 'music-metadata';
 import ffmpegPath from 'ffmpeg-static';
 import { exec } from 'child_process';
-import { writeFile, unlink } from 'fs/promises';
+import { writeFile, unlink, stat } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import os from 'os';
@@ -28,36 +28,31 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
     return null;
   }
 
+  // Output silence-removed audio as raw PCM → duration = fileSize / bytesPerSec
+  // Avoids relying on ffmpeg progress output which is suppressed in non-TTY envs.
+  const SAMPLE_RATE = 8000;
+  const BYTES_PER_SEC = SAMPLE_RATE * 2; // 16-bit mono
+  const outPath = join(os.tmpdir(), `speaking-${Date.now()}.raw`);
+
   return new Promise((resolve) => {
-    const cmd = `"${ffmpegPath}" -i "${tmpPath}" -af "silenceremove=start_periods=1:start_silence=0.3:start_threshold=-40dB:detection=peak,silenceremove=stop_periods=1:stop_silence=0.3:stop_threshold=-40dB:detection=peak" -f null - 2>&1`;
-    exec(cmd, { timeout: 25000 }, async (error, stdout, stderr) => {
+    const cmd = `"${ffmpegPath}" -y -i "${tmpPath}" -af "silenceremove=start_periods=1:start_silence=0.3:start_threshold=-40dB:detection=peak,silenceremove=stop_periods=1:stop_silence=0.3:stop_threshold=-40dB:detection=peak" -f s16le -ar ${SAMPLE_RATE} -ac 1 "${outPath}"`;
+    exec(cmd, { timeout: 30000 }, async (error) => {
       await unlink(tmpPath).catch(() => {});
-      const output = (stdout || '') + (stderr || '');
-
-      console.log('[ffmpeg] exit error:', error?.message ?? 'none');
-      console.log('[ffmpeg] output:', output.slice(0, 800));
-
-      // Last time= in progress output = duration of silence-removed audio
-      const timeMatches = output.match(/time=(\d+):(\d+):(\d+\.\d+)/g);
-      if (timeMatches?.length > 0) {
-        const parts = timeMatches[timeMatches.length - 1].match(/time=(\d+):(\d+):(\d+\.\d+)/);
-        if (parts) {
-          const duration = parseInt(parts[1]) * 3600 + parseInt(parts[2]) * 60 + parseFloat(parts[3]);
-          console.log('[ffmpeg] speaking duration:', duration);
-          if (duration > 0) return resolve(duration);
-        }
+      if (error) {
+        console.log('[ffmpeg] exec error:', error.message);
+        await unlink(outPath).catch(() => {});
+        return resolve(null);
       }
-
-      // Fallback: total file duration from header
-      const durMatch = output.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
-      if (durMatch) {
-        const total = parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseFloat(durMatch[3]);
-        console.log('[ffmpeg] fallback total duration:', total);
-        return resolve(total > 0 ? total : null);
+      try {
+        const { size } = await stat(outPath);
+        await unlink(outPath).catch(() => {});
+        const duration = size / BYTES_PER_SEC;
+        console.log('[ffmpeg] speaking duration:', duration);
+        resolve(duration > 0 ? duration : null);
+      } catch (e) {
+        console.log('[ffmpeg] stat error:', e.message);
+        resolve(null);
       }
-
-      console.log('[ffmpeg] no duration found');
-      resolve(null);
     });
   });
 }
