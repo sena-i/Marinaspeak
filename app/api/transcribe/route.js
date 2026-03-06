@@ -11,7 +11,9 @@ import os from 'os';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// Silence-removed speaking duration via ffmpeg (runs inside Vercel Lambda)
+// Silence-removed speaking duration via ffmpeg (runs inside Vercel Lambda).
+// Uses silenceremove filter; parses the final time= timestamp which equals
+// the output duration after silence removal — same logic as the working server.
 async function getSpeakingDuration(audioBuffer, mimeType) {
   if (!ffmpegPath) return null;
   const ext = mimeType.includes('mp4') ? '.mp4' : '.mp3';
@@ -24,21 +26,29 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
   }
 
   return new Promise((resolve) => {
-    const cmd = `"${ffmpegPath}" -i "${tmpPath}" -af "silencedetect=noise=-40dB:d=0.3" -f null - 2>&1`;
+    const cmd = `"${ffmpegPath}" -i "${tmpPath}" -af "silenceremove=start_periods=1:start_silence=0.3:start_threshold=-40dB:detection=peak,silenceremove=stop_periods=-1:stop_silence=0.3:stop_threshold=-40dB:detection=peak" -f null - 2>&1`;
     exec(cmd, { timeout: 25000 }, async (error, stdout, stderr) => {
       await unlink(tmpPath).catch(() => {});
       const output = (stdout || '') + (stderr || '');
 
-      const durMatch = output.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
-      if (!durMatch) return resolve(null);
-      const total = parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseFloat(durMatch[3]);
-
-      let silenceTotal = 0;
-      for (const m of output.matchAll(/silence_duration:\s*([\d.]+)/g)) {
-        silenceTotal += parseFloat(m[1]);
+      // Last time= in progress output = duration of silence-removed audio
+      const timeMatches = output.match(/time=(\d+):(\d+):(\d+\.\d+)/g);
+      if (timeMatches?.length > 0) {
+        const parts = timeMatches[timeMatches.length - 1].match(/time=(\d+):(\d+):(\d+\.\d+)/);
+        if (parts) {
+          const duration = parseInt(parts[1]) * 3600 + parseInt(parts[2]) * 60 + parseFloat(parts[3]);
+          if (duration > 0) return resolve(duration);
+        }
       }
 
-      resolve(Math.max(0, total - silenceTotal));
+      // Fallback: total file duration from header
+      const durMatch = output.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+      if (durMatch) {
+        const total = parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseFloat(durMatch[3]);
+        return resolve(total > 0 ? total : null);
+      }
+
+      resolve(null);
     });
   });
 }
