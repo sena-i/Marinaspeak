@@ -29,7 +29,7 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
 
   return new Promise((resolve) => {
     // 2>&1 merges stderr into stdout so exec captures it all in the stdout arg
-    const cmd = `"${ffmpegPath}" -y -i "${tmpPath}" -af "silencedetect=noise=-40dB:duration=0.3" -f null - 2>&1`;
+    const cmd = `"${ffmpegPath}" -y -i "${tmpPath}" -af "silencedetect=noise=-30dB:duration=0.5" -f null - 2>&1`;
     exec(cmd, { timeout: 30000 }, async (error, stdout) => {
       await unlink(tmpPath).catch(() => {});
 
@@ -47,6 +47,7 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
       const startTimes = [...stdout.matchAll(/silence_start:\s*([\d.]+)/g)].map(m => parseFloat(m[1]));
       const endTimes   = [...stdout.matchAll(/silence_end:\s*([\d.]+)/g)].map(m => parseFloat(m[1]));
       const durations  = [...stdout.matchAll(/silence_duration:\s*([\d.]+)/g)].map(m => parseFloat(m[1]));
+      console.log('[ffmpeg] silence intervals:', startTimes.map((s, i) => `${s.toFixed(1)}→${endTimes[i]?.toFixed(1) ?? 'EOF'}`).join(', ') || 'none');
 
       let silenceToSubtract = 0;
       // Leading: first silence interval starts at ~0
