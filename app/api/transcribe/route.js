@@ -53,8 +53,14 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
       if (startTimes.length > 0 && startTimes[0] < 0.5) {
         silenceToSubtract += durations[0] ?? 0;
       }
-      // Trailing: last silence interval ends at ~total duration
-      if (endTimes.length > 0 && totalDuration - endTimes[endTimes.length - 1] < 1.0) {
+      // Trailing: if stream ended during silence, silence_end is never emitted.
+      // Detect as unmatched silence_start at the end of the file.
+      if (startTimes.length > endTimes.length) {
+        // Last silence_start has no matching end — audio ended while silent
+        const lastStart = startTimes[startTimes.length - 1];
+        silenceToSubtract += totalDuration - lastStart;
+      } else if (endTimes.length > 0 && totalDuration - endTimes[endTimes.length - 1] < 1.0) {
+        // Last silence_end is very close to total duration
         silenceToSubtract += durations[durations.length - 1] ?? 0;
       }
 
