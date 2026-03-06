@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { transcribeWithGemini } from '@/lib/api/gemini';
 import { validateAudioFile } from '@/lib/utils/fileValidator';
+import { parseBuffer } from 'music-metadata';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -25,6 +26,16 @@ async function getFFmpeg() {
   })();
 
   return ffmpegLoadPromise;
+}
+
+// Get total audio duration from file metadata (pure JS, works everywhere)
+async function getTotalDuration(audioBuffer) {
+  try {
+    const metadata = await parseBuffer(Buffer.from(audioBuffer));
+    return metadata.format.duration ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // Calculate speaking duration by removing silence with ffmpeg.wasm
@@ -109,17 +120,19 @@ export async function POST(request) {
       mimeTypeForGemini = 'audio/mp4';
     }
 
-    // Run transcription and speaking duration calculation in parallel
-    const [transcription, speakingDuration] = await Promise.all([
+    // Run transcription, silence-based duration, and total duration in parallel
+    const [transcription, speakingDuration, totalDuration] = await Promise.all([
       transcribeWithGemini(base64Audio, mimeTypeForGemini),
-      getSpeakingDuration(arrayBuffer, mimeTypeForGemini)
+      getSpeakingDuration(arrayBuffer, mimeTypeForGemini),
+      getTotalDuration(arrayBuffer)
     ]);
 
     return NextResponse.json({
       success: true,
       transcription: transcription.text,
       duration: transcription.duration,
-      speakingDuration
+      speakingDuration,
+      totalDuration  // reliable fallback when speakingDuration is null
     });
   } catch (error) {
     console.error('Transcription error:', error);

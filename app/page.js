@@ -66,6 +66,7 @@ export default function Home() {
       const transcribeResult = await uploadAndTranscribe(audioFile, setProgress);
       const text = transcribeResult.transcription;
       const serverSpeakingDuration = transcribeResult.speakingDuration || null;
+      const serverTotalDuration = transcribeResult.totalDuration || null;
       setTranscription(text);
       setSpeakingDuration(serverSpeakingDuration);
 
@@ -89,7 +90,7 @@ export default function Home() {
 
       const words = countWords(text);
       setWordCount(words);
-      const durationForWpm = serverSpeakingDuration || audioDuration;
+      const durationForWpm = serverSpeakingDuration || audioDuration || serverTotalDuration;
       const calculatedWpm = durationForWpm && durationForWpm > 0
         ? calculateWPM(text, durationForWpm)
         : null;
@@ -101,7 +102,7 @@ export default function Home() {
         studentId: trimmedId,
         transcription: text,
         wordCount: words,
-        durationSeconds: audioDuration,
+        durationSeconds: audioDuration || serverTotalDuration,
         speakingDuration: serverSpeakingDuration,
         wpm: calculatedWpm,
         corrections: parsedCorrections,
