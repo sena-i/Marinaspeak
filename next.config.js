@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ['@ffmpeg/ffmpeg', '@ffmpeg/core'],
-  experimental: {
+experimental: {
     serverActions: {
       bodySizeLimit: '50mb'
     }

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { uploadAndTranscribe, analyzeTranscription, registerStudent, saveResult } from '@/lib/api/client';
-import { countWords, getAudioDuration, calculateWPM } from '@/lib/utils/wpmCalculator';
+import { countWords, getAudioDuration, getSpeakingDuration, calculateWPM } from '@/lib/utils/wpmCalculator';
 import { formatDuration } from '@/lib/utils/formatters';
 import { formatFileSize } from '@/lib/utils/fileValidator';
 
@@ -13,6 +13,7 @@ export default function Home() {
   const [studentId, setStudentId] = useState('');
   const [audioFile, setAudioFile] = useState(null);
   const [audioDuration, setAudioDuration] = useState(null);
+  const [clientSpeakingDuration, setClientSpeakingDuration] = useState(null);
   const [focusPoints, setFocusPoints] = useState('');
   const fileInputRef = useRef(null);
 
@@ -42,12 +43,13 @@ export default function Home() {
     if (!file) return;
     setError('');
     setAudioFile(file);
-    try {
-      const duration = await getAudioDuration(file);
-      setAudioDuration(duration);
-    } catch {
-      setAudioDuration(null);
-    }
+    setClientSpeakingDuration(null);
+    const [total, speaking] = await Promise.allSettled([
+      getAudioDuration(file),
+      getSpeakingDuration(file)
+    ]);
+    setAudioDuration(total.status === 'fulfilled' ? total.value : null);
+    setClientSpeakingDuration(speaking.status === 'fulfilled' ? speaking.value : null);
   }
 
   async function handleProcess() {
@@ -90,7 +92,7 @@ export default function Home() {
 
       const words = countWords(text);
       setWordCount(words);
-      const durationForWpm = serverSpeakingDuration || audioDuration || serverTotalDuration;
+      const durationForWpm = clientSpeakingDuration || serverSpeakingDuration || audioDuration || serverTotalDuration;
       const calculatedWpm = durationForWpm && durationForWpm > 0
         ? calculateWPM(text, durationForWpm)
         : null;
@@ -103,7 +105,7 @@ export default function Home() {
         transcription: text,
         wordCount: words,
         durationSeconds: audioDuration || serverTotalDuration,
-        speakingDuration: serverSpeakingDuration,
+        speakingDuration: clientSpeakingDuration || serverSpeakingDuration,
         wpm: calculatedWpm,
         corrections: parsedCorrections,
         fullCorrections: parsedCorrections,
@@ -130,6 +132,7 @@ export default function Home() {
     setStudentId('');
     setAudioFile(null);
     setAudioDuration(null);
+    setClientSpeakingDuration(null);
     setSpeakingDuration(null);
     setFocusPoints('');
     setTranscription('');
