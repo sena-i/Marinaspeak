@@ -70,7 +70,7 @@ export default function Home() {
       const serverSpeakingDuration = transcribeResult.speakingDuration || null;
       const serverTotalDuration = transcribeResult.totalDuration || null;
       setTranscription(text);
-      setSpeakingDuration(serverSpeakingDuration);
+      setSpeakingDuration(serverSpeakingDuration || clientSpeakingDuration);
 
       setProgressText('スピーチを分析中...');
       const analyzeResult = await analyzeTranscription(text, setProgress, focusPoints);
@@ -92,7 +92,7 @@ export default function Home() {
 
       const words = countWords(text);
       setWordCount(words);
-      const durationForWpm = clientSpeakingDuration || serverSpeakingDuration || audioDuration || serverTotalDuration;
+      const durationForWpm = serverSpeakingDuration || clientSpeakingDuration || audioDuration || serverTotalDuration;
       const calculatedWpm = durationForWpm && durationForWpm > 0
         ? calculateWPM(text, durationForWpm)
         : null;
@@ -105,7 +105,7 @@ export default function Home() {
         transcription: text,
         wordCount: words,
         durationSeconds: audioDuration || serverTotalDuration,
-        speakingDuration: clientSpeakingDuration || serverSpeakingDuration,
+        speakingDuration: serverSpeakingDuration || clientSpeakingDuration,
         wpm: calculatedWpm,
         corrections: parsedCorrections,
         fullCorrections: parsedCorrections,
