@@ -5,6 +5,7 @@ import { parseBuffer } from 'music-metadata';
 import ffmpegPath from 'ffmpeg-static';
 import { exec } from 'child_process';
 import { writeFile, unlink } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import os from 'os';
 
@@ -15,7 +16,9 @@ export const maxDuration = 60;
 // Uses silenceremove filter; parses the final time= timestamp which equals
 // the output duration after silence removal — same logic as the working server.
 async function getSpeakingDuration(audioBuffer, mimeType) {
-  if (!ffmpegPath) return null;
+  console.log('[ffmpeg] path:', ffmpegPath);
+  console.log('[ffmpeg] exists:', ffmpegPath ? existsSync(ffmpegPath) : false);
+  if (!ffmpegPath || !existsSync(ffmpegPath)) return null;
   const ext = mimeType.includes('mp4') ? '.mp4' : '.mp3';
   const tmpPath = join(os.tmpdir(), `audio-${Date.now()}${ext}`);
 
