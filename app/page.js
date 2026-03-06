@@ -48,8 +48,11 @@ export default function Home() {
       getAudioDuration(file),
       getSpeakingDuration(file)
     ]);
-    setAudioDuration(total.status === 'fulfilled' ? total.value : null);
-    setClientSpeakingDuration(speaking.status === 'fulfilled' ? speaking.value : null);
+    const totalVal = total.status === 'fulfilled' ? total.value : null;
+    const speakingVal = speaking.status === 'fulfilled' ? speaking.value : null;
+    console.log('[WPM debug] audioDuration:', totalVal, '| speakingDuration:', speakingVal, '| speaking error:', speaking.reason);
+    setAudioDuration(totalVal);
+    setClientSpeakingDuration(speakingVal);
   }
 
   async function handleProcess() {
@@ -93,6 +96,7 @@ export default function Home() {
       const words = countWords(text);
       setWordCount(words);
       const durationForWpm = clientSpeakingDuration || serverSpeakingDuration || audioDuration || serverTotalDuration;
+      console.log('[WPM debug] clientSpeaking:', clientSpeakingDuration, '| serverSpeaking:', serverSpeakingDuration, '| audioDuration:', audioDuration, '| serverTotal:', serverTotalDuration, '| using:', durationForWpm);
       const calculatedWpm = durationForWpm && durationForWpm > 0
         ? calculateWPM(text, durationForWpm)
         : null;
