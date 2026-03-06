@@ -1,74 +1,80 @@
 import { NextResponse } from 'next/server';
 import { transcribeWithGemini } from '@/lib/api/gemini';
 import { validateAudioFile } from '@/lib/utils/fileValidator';
-import { exec } from 'child_process';
-import { writeFile, unlink } from 'fs/promises';
-import path from 'path';
-import os from 'os';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// Get ffmpeg binary path (ffmpeg-static only, no system fallback on serverless)
-function getFFmpegPath() {
-  try {
-    const ffmpegPath = require('ffmpeg-static');
-    return ffmpegPath || null;
-  } catch {
-    return null;
-  }
+// Module-level cache: reuse the loaded FFmpeg instance across warm Lambda invocations
+let ffmpegInstance = null;
+let ffmpegLoadPromise = null;
+
+async function getFFmpeg() {
+  if (ffmpegInstance) return ffmpegInstance;
+  if (ffmpegLoadPromise) return ffmpegLoadPromise;
+
+  ffmpegLoadPromise = (async () => {
+    const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+    const ffmpeg = new FFmpeg();
+    await ffmpeg.load({
+      coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js',
+      wasmURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm',
+    });
+    ffmpegInstance = ffmpeg;
+    return ffmpeg;
+  })();
+
+  return ffmpegLoadPromise;
 }
 
-// Calculate speaking duration by removing silence with ffmpeg
-// Returns null on Vercel/serverless where ffmpeg is unavailable (WPM uses audioDuration fallback)
+// Calculate speaking duration by removing silence with ffmpeg.wasm
 async function getSpeakingDuration(audioBuffer, mimeType) {
-  const ffmpegPath = getFFmpegPath();
-  if (!ffmpegPath) {
-    // ffmpeg not available (e.g. Vercel serverless) — skip silently
-    return null;
-  }
-
-  const ext = mimeType.includes('mp4') ? '.mp4' : '.mp3';
-  const tmpPath = path.join(os.tmpdir(), `speakalize-${Date.now()}${ext}`);
-
   try {
-    await writeFile(tmpPath, Buffer.from(audioBuffer));
+    const ffmpeg = await getFFmpeg();
+    let logOutput = '';
 
-    return new Promise((resolve) => {
-      const cmd = `"${ffmpegPath}" -i "${tmpPath}" -af "silenceremove=start_periods=1:start_silence=0.3:start_threshold=-40dB:detection=peak,silenceremove=stop_periods=-1:stop_silence=0.3:stop_threshold=-40dB:detection=peak" -f null - 2>&1`;
+    const logHandler = ({ message }) => { logOutput += message + '\n'; };
+    ffmpeg.on('log', logHandler);
 
-      exec(cmd, { timeout: 15000 }, async (error, stdout, stderr) => {
-        await unlink(tmpPath).catch(() => {});
-        const output = (stdout || '') + (stderr || '');
-        // Find the last time= value in ffmpeg output
-        const timeMatches = output.match(/time=(\d+):(\d+):(\d+\.\d+)/g);
-        if (timeMatches && timeMatches.length > 0) {
-          const lastMatch = timeMatches[timeMatches.length - 1];
-          const parts = lastMatch.match(/time=(\d+):(\d+):(\d+\.\d+)/);
-          if (parts) {
-            const hours = parseInt(parts[1]);
-            const minutes = parseInt(parts[2]);
-            const seconds = parseFloat(parts[3]);
-            const duration = hours * 3600 + minutes * 60 + seconds;
-            resolve(duration > 0 ? duration : null);
-            return;
-          }
-        }
-        // Fallback: parse total duration from ffmpeg input info (always present for valid files)
-        const durationMatch = output.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
-        if (durationMatch) {
-          const hours = parseInt(durationMatch[1]);
-          const minutes = parseInt(durationMatch[2]);
-          const seconds = parseFloat(durationMatch[3]);
-          const totalDuration = hours * 3600 + minutes * 60 + seconds;
-          resolve(totalDuration > 0 ? totalDuration : null);
-          return;
-        }
-        resolve(null); // ffmpeg execution failed or parsing failed
-      });
-    });
-  } catch {
-    await unlink(tmpPath).catch(() => {});
+    const ext = mimeType.includes('mp4') ? '.mp4' : '.mp3';
+    const inputName = `input-${Date.now()}${ext}`;
+
+    await ffmpeg.writeFile(inputName, new Uint8Array(audioBuffer));
+
+    try {
+      await ffmpeg.exec([
+        '-i', inputName,
+        '-af', 'silenceremove=start_periods=1:start_silence=0.3:start_threshold=-40dB:detection=peak,silenceremove=stop_periods=-1:stop_silence=0.3:stop_threshold=-40dB:detection=peak',
+        '-f', 'null', 'output'
+      ]);
+    } catch {
+      // ffmpeg may exit non-zero; still parse whatever logs we got
+    }
+
+    await ffmpeg.deleteFile(inputName).catch(() => {});
+    ffmpeg.off('log', logHandler);
+
+    // Parse speaking duration from ffmpeg progress output
+    const timeMatches = logOutput.match(/time=(\d+):(\d+):(\d+\.\d+)/g);
+    if (timeMatches && timeMatches.length > 0) {
+      const lastMatch = timeMatches[timeMatches.length - 1];
+      const parts = lastMatch.match(/time=(\d+):(\d+):(\d+\.\d+)/);
+      if (parts) {
+        const duration = parseInt(parts[1]) * 3600 + parseInt(parts[2]) * 60 + parseFloat(parts[3]);
+        if (duration > 0) return duration;
+      }
+    }
+
+    // Fallback: total file duration from ffmpeg input info
+    const durationMatch = logOutput.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+    if (durationMatch) {
+      const totalDuration = parseInt(durationMatch[1]) * 3600 + parseInt(durationMatch[2]) * 60 + parseFloat(durationMatch[3]);
+      return totalDuration > 0 ? totalDuration : null;
+    }
+
+    return null;
+  } catch (err) {
+    console.error('ffmpeg.wasm error:', err.message);
     return null;
   }
 }
