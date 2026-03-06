@@ -4,7 +4,7 @@ import { validateAudioFile } from '@/lib/utils/fileValidator';
 import { parseBuffer } from 'music-metadata';
 import ffmpegPath from 'ffmpeg-static';
 import { exec } from 'child_process';
-import { writeFile, unlink, stat } from 'fs/promises';
+import { writeFile, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import os from 'os';
@@ -12,9 +12,8 @@ import os from 'os';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// Silence-removed speaking duration via ffmpeg (runs inside Vercel Lambda).
-// Uses silenceremove filter; parses the final time= timestamp which equals
-// the output duration after silence removal — same logic as the working server.
+// Speaking duration via ffmpeg silencedetect: total - sum(silence_durations).
+// Uses -f null (no output file), parses Duration: and silence_duration: from stderr.
 async function getSpeakingDuration(audioBuffer, mimeType) {
   console.log('[ffmpeg] path:', ffmpegPath);
   console.log('[ffmpeg] exists:', ffmpegPath ? existsSync(ffmpegPath) : false);
@@ -28,31 +27,29 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
     return null;
   }
 
-  // Output silence-removed audio as raw PCM → duration = fileSize / bytesPerSec
-  // Avoids relying on ffmpeg progress output which is suppressed in non-TTY envs.
-  const SAMPLE_RATE = 8000;
-  const BYTES_PER_SEC = SAMPLE_RATE * 2; // 16-bit mono
-  const outPath = join(os.tmpdir(), `speaking-${Date.now()}.raw`);
-
   return new Promise((resolve) => {
-    const cmd = `"${ffmpegPath}" -y -i "${tmpPath}" -af "silenceremove=start_periods=1:start_silence=0.3:start_threshold=-40dB:detection=peak,silenceremove=stop_periods=1:stop_silence=0.3:stop_threshold=-40dB:detection=peak" -f s16le -ar ${SAMPLE_RATE} -ac 1 "${outPath}"`;
-    exec(cmd, { timeout: 30000 }, async (error) => {
+    // 2>&1 merges stderr into stdout so exec captures it all in the stdout arg
+    const cmd = `"${ffmpegPath}" -y -i "${tmpPath}" -af "silencedetect=noise=-40dB:duration=0.3" -f null - 2>&1`;
+    exec(cmd, { timeout: 30000 }, async (error, stdout) => {
       await unlink(tmpPath).catch(() => {});
-      if (error) {
-        console.log('[ffmpeg] exec error:', error.message);
-        await unlink(outPath).catch(() => {});
+
+      // Parse total duration from "Duration: HH:MM:SS.ss"
+      const durMatch = stdout.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);
+      if (!durMatch) {
+        console.log('[ffmpeg] no Duration in output, stdout len:', stdout.length);
         return resolve(null);
       }
-      try {
-        const { size } = await stat(outPath);
-        await unlink(outPath).catch(() => {});
-        const duration = size / BYTES_PER_SEC;
-        console.log('[ffmpeg] speaking duration:', duration);
-        resolve(duration > 0 ? duration : null);
-      } catch (e) {
-        console.log('[ffmpeg] stat error:', e.message);
-        resolve(null);
-      }
+      const totalDuration = parseInt(durMatch[1]) * 3600
+                          + parseInt(durMatch[2]) * 60
+                          + parseFloat(durMatch[3]);
+
+      // Sum all detected silence_duration values
+      const silenceMatches = [...stdout.matchAll(/silence_duration:\s*([\d.]+)/g)];
+      const totalSilence = silenceMatches.reduce((sum, m) => sum + parseFloat(m[1]), 0);
+
+      const speaking = totalDuration - totalSilence;
+      console.log('[ffmpeg] total:', totalDuration, 'silence:', totalSilence, 'speaking:', speaking);
+      resolve(speaking > 0 ? speaking : null);
     });
   });
 }
