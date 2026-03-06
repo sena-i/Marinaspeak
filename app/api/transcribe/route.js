@@ -43,12 +43,23 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
                           + parseInt(durMatch[2]) * 60
                           + parseFloat(durMatch[3]);
 
-      // Sum all detected silence_duration values
-      const silenceMatches = [...stdout.matchAll(/silence_duration:\s*([\d.]+)/g)];
-      const totalSilence = silenceMatches.reduce((sum, m) => sum + parseFloat(m[1]), 0);
+      // Only subtract leading and trailing silence (not mid-speech pauses).
+      const startTimes = [...stdout.matchAll(/silence_start:\s*([\d.]+)/g)].map(m => parseFloat(m[1]));
+      const endTimes   = [...stdout.matchAll(/silence_end:\s*([\d.]+)/g)].map(m => parseFloat(m[1]));
+      const durations  = [...stdout.matchAll(/silence_duration:\s*([\d.]+)/g)].map(m => parseFloat(m[1]));
 
-      const speaking = totalDuration - totalSilence;
-      console.log('[ffmpeg] total:', totalDuration, 'silence:', totalSilence, 'speaking:', speaking);
+      let silenceToSubtract = 0;
+      // Leading: first silence interval starts at ~0
+      if (startTimes.length > 0 && startTimes[0] < 0.5) {
+        silenceToSubtract += durations[0] ?? 0;
+      }
+      // Trailing: last silence interval ends at ~total duration
+      if (endTimes.length > 0 && totalDuration - endTimes[endTimes.length - 1] < 1.0) {
+        silenceToSubtract += durations[durations.length - 1] ?? 0;
+      }
+
+      const speaking = totalDuration - silenceToSubtract;
+      console.log('[ffmpeg] total:', totalDuration, 'trimmed silence:', silenceToSubtract, 'speaking:', speaking);
       resolve(speaking > 0 ? speaking : null);
     });
   });
