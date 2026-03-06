@@ -31,12 +31,16 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
       await unlink(tmpPath).catch(() => {});
       const output = (stdout || '') + (stderr || '');
 
+      console.log('[ffmpeg] exit error:', error?.message ?? 'none');
+      console.log('[ffmpeg] output:', output.slice(0, 800));
+
       // Last time= in progress output = duration of silence-removed audio
       const timeMatches = output.match(/time=(\d+):(\d+):(\d+\.\d+)/g);
       if (timeMatches?.length > 0) {
         const parts = timeMatches[timeMatches.length - 1].match(/time=(\d+):(\d+):(\d+\.\d+)/);
         if (parts) {
           const duration = parseInt(parts[1]) * 3600 + parseInt(parts[2]) * 60 + parseFloat(parts[3]);
+          console.log('[ffmpeg] speaking duration:', duration);
           if (duration > 0) return resolve(duration);
         }
       }
@@ -45,9 +49,11 @@ async function getSpeakingDuration(audioBuffer, mimeType) {
       const durMatch = output.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
       if (durMatch) {
         const total = parseInt(durMatch[1]) * 3600 + parseInt(durMatch[2]) * 60 + parseFloat(durMatch[3]);
+        console.log('[ffmpeg] fallback total duration:', total);
         return resolve(total > 0 ? total : null);
       }
 
+      console.log('[ffmpeg] no duration found');
       resolve(null);
     });
   });
