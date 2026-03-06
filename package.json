@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ffmpeg/core": "^0.12.6",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@supabase/supabase-js": "^2.95.3",
     "@vercel/speed-insights": "^1.3.1",

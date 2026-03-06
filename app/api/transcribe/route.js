@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { transcribeWithGemini } from '@/lib/api/gemini';
 import { validateAudioFile } from '@/lib/utils/fileValidator';
 import { parseBuffer } from 'music-metadata';
+import { createRequire } from 'module';
+import { pathToFileURL } from 'url';
+
+const _require = createRequire(import.meta.url);
+const FFMPEG_CORE_URL = pathToFileURL(_require.resolve('@ffmpeg/core/dist/esm/ffmpeg-core.js')).href;
+const FFMPEG_WASM_URL = pathToFileURL(_require.resolve('@ffmpeg/core/dist/esm/ffmpeg-core.wasm')).href;
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -18,8 +24,8 @@ async function getFFmpeg() {
     const { FFmpeg } = await import('@ffmpeg/ffmpeg');
     const ffmpeg = new FFmpeg();
     await ffmpeg.load({
-      coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js',
-      wasmURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm',
+      coreURL: FFMPEG_CORE_URL,
+      wasmURL: FFMPEG_WASM_URL,
     });
     ffmpegInstance = ffmpeg;
     return ffmpeg;
