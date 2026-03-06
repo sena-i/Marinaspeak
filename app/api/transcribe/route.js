@@ -55,8 +55,7 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       transcription: transcription.text,
-      speakingDuration: transcription.duration,  // from Gemini (null if parse failed)
-      totalDuration                               // last-resort fallback
+      totalDuration  // used for WPM when client-side speaking duration unavailable
     });
   } catch (error) {
     console.error('Transcription error:', error);
