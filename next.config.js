@@ -5,12 +5,7 @@ const nextConfig = {
       bodySizeLimit: '50mb'
     }
   },
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.resolve.fallback = { ...config.resolve.fallback, fs: false };
-    }
-    return config;
-  }
+  turbopack: {}
 };
 
 module.exports = nextConfig;
